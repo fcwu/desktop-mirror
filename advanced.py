@@ -1,31 +1,75 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import wx
-import  wx.lib.newevent
+import wx.lib.newevent
+from threading import Thread, Lock, Timer
+import signal
+import logging
+import logging.handlers
+import subprocess
+import shlex
+from argparse import ArgumentParser, SUPPRESS
+from ConfigParser import ConfigParser
+from log import LoggingConfiguration
+from command import Command
 
 SomeNewEvent, EVT_SOME_NEW_EVENT = wx.lib.newevent.NewEvent()
-SomeNewCommandEvent, EVT_SOME_NEW_COMMAND_EVENT = wx.lib.newevent.NewCommandEvent()
 
 
-class Example(wx.Frame):
+class UiAdvanced(wx.Frame):
+    def __init__(self, parent, title, core):
+        super(UiAdvanced, self).__init__(parent, title=title)
 
-    def __init__(self, parent, title):
-        super(Example, self).__init__(parent, title=title)
+        self._core = core
+        self._core.register_listener(self)
+        self._input = dict()
 
         self.Bind(EVT_SOME_NEW_EVENT, self.handler)
+        self.Bind(wx.EVT_CLOSE, self.OnCloseWindow)
 
         self.InitUI()
+        self.ConfigLoad()
         self.Centre()
         self.Layout()
         self.Fit()
         self.Show()
 
+    def ConfigLoad(self):
+        config = ConfigParser()
+        config.read('default.ini')
+        if not config.has_section('input'):
+            config.add_section('input')
+        else:
+            for w in self._input:
+                if config.has_option('input', w):
+                    self._input[w].SetValue(config.get('input', w))
+        self.config = config
+
+    def ConfigSave(self):
+        config = self.config
+        for w in self._input:
+            config.set('input', w, self._input[w].GetValue())
+        with open('default.ini', 'w') as configfile:
+            config.write(configfile)
+
     def handler(self, evt):
-        # given the above constructed event, the following is true
-        #evt.attr1 == "hello"
-        #evt.attr2 == 654
-        pass
+        def avahi(data):
+            self._input['address'].Clear()
+            for f in self._core.targets:
+                self._input['address'].Append(';'.join(f[2:5]))
+
+        def selection(data):
+            self._input['x'].SetValue(data[0])
+            self._input['y'].SetValue(data[1])
+            self._input['w'].SetValue(data[2])
+            self._input['h'].SetValue(data[3])
+
+        logging.debug('UI event {0}: {1}'.format(evt.attr1, evt.attr2))
+        dispatch = {'avahi': avahi, 'selection': selection}
+        if evt.attr1 in dispatch:
+            dispatch[evt.attr1](evt.attr2)
 
     def InitUI(self):
         def titleBox():
@@ -42,6 +86,27 @@ class Example(wx.Frame):
             #vbox.Add(hbox, 1, wx.ALL, 5)
             return hbox
 
+        def targetBox():
+            hbox = wx.BoxSizer(wx.HORIZONTAL)
+            hbox.Add(wx.StaticText(panel, label="Target"), flag=wx.ALL,
+                     border=15)
+            cb = wx.ComboBox(panel, 500, "127.0.0.1:12345",
+                             style=wx.CB_DROPDOWN | wx.TE_PROCESS_ENTER
+                             )
+            button1 = wx.Button(panel, label="Streaming")
+            hbox.Add(cb, 1, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT,
+                     border=15)
+            hbox.Add(button1, 0, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT,
+                     border=15)
+            self._input['address'] = cb
+
+            self.Bind(wx.EVT_COMBOBOX, self.OnTargetChosen, cb)
+            self.Bind(wx.EVT_TEXT, self.OnTargetKey, cb)
+            self.Bind(wx.EVT_TEXT_ENTER, self.OnTargetKeyEnter, cb)
+            self.Bind(wx.EVT_BUTTON, self.OnClickStream, button1)
+
+            return hbox
+
         def geometryBox():
             sb = wx.StaticBox(panel, label="Geometry")
             boxsizer = wx.StaticBoxSizer(sb, wx.VERTICAL)
@@ -52,24 +117,43 @@ class Example(wx.Frame):
             tc2 = wx.TextCtrl(panel)
             tc3 = wx.TextCtrl(panel)
             tc4 = wx.TextCtrl(panel)
+            self._input['x'] = tc1
+            self._input['y'] = tc2
+            self._input['w'] = tc3
+            self._input['h'] = tc4
 
-            hbox.Add(wx.StaticText(panel, label="X"), flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.Add(wx.StaticText(panel, label="X"),
+                     flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(5)
             hbox.Add(tc1, 1, flag=wx.EXPAND)
-            hbox.Add(wx.StaticText(panel, label="Y"), flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(10)
+            hbox.Add(wx.StaticText(panel, label="Y"),
+                     flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(5)
             hbox.Add(tc2, 1, flag=wx.EXPAND)
-            hbox.Add(wx.StaticText(panel, label="W"), flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(10)
+            hbox.Add(wx.StaticText(panel, label="W"),
+                     flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(5)
             hbox.Add(tc3, 1, flag=wx.EXPAND)
-            hbox.Add(wx.StaticText(panel, label="H"), flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(10)
+            hbox.Add(wx.StaticText(panel, label="H"),
+                     flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(5)
             hbox.Add(tc4, 1, flag=wx.EXPAND)
 
             boxsizer.Add(hbox, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
 
             hbox = wx.BoxSizer(wx.HORIZONTAL)
             button1 = wx.Button(panel, label="Select Area")
-            hbox.Add(button1, 1, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT, border=15)
-            button1 = wx.Button(panel, label="Full Screen")
-            hbox.Add(button1, 1, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT, border=15)
+            hbox.Add(button1, 1,
+                     flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT, border=15)
+            button2 = wx.Button(panel, label="Full Screen")
+            hbox.Add(button2, 1, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT,
+                     border=15)
             boxsizer.Add(hbox, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
+
+            self.Bind(wx.EVT_BUTTON, self.OnClickSelectionArea, button1)
 
             return boxsizer
 
@@ -80,9 +164,13 @@ class Example(wx.Frame):
 
             tc1 = wx.TextCtrl(panel)
             tc2 = wx.TextCtrl(panel)
+            self._input['video_input'] = tc1
+            self._input['video_output'] = tc2
 
-            fgs.AddMany([(wx.StaticText(panel, label="input")), (tc1, 1, wx.EXPAND),
-                        (wx.StaticText(panel, label="output")), (tc2, 1, wx.EXPAND)])
+            fgs.AddMany([(wx.StaticText(panel, label="input")),
+                         (tc1, 1, wx.EXPAND),
+                         (wx.StaticText(panel, label="output")),
+                         (tc2, 1, wx.EXPAND)])
 
             fgs.AddGrowableCol(1, 1)
             boxsizer.Add(fgs, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
@@ -95,111 +183,351 @@ class Example(wx.Frame):
 
             tc1 = wx.TextCtrl(panel)
             tc2 = wx.TextCtrl(panel)
+            self._input['audio_input'] = tc1
+            self._input['audio_output'] = tc2
 
-            fgs.AddMany([(wx.StaticText(panel, label="input")), (tc1, 1, wx.EXPAND),
-                        (wx.StaticText(panel, label="output")), (tc2, 1, wx.EXPAND)])
+            fgs.AddMany([(wx.StaticText(panel, label="input")),
+                         (tc1, 1, wx.EXPAND),
+                         (wx.StaticText(panel, label="output")),
+                         (tc2, 1, wx.EXPAND)])
 
             fgs.AddGrowableCol(1, 1)
             boxsizer.Add(fgs, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
             return boxsizer
 
-        def actionBox():
-            hbox = wx.BoxSizer(wx.HORIZONTAL)
-            button1 = wx.Button(panel, label="Streaming")
-            hbox.Add(button1, 1, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT, border=15)
-            return hbox
-
         panel = self
         vbox = wx.BoxSizer(wx.VERTICAL)
 
+        flags = wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT
         vbox.Add(titleBox(), 0, wx.ALL, 0)
-        vbox.Add(geometryBox(), 0, flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
-        vbox.Add(videoBox(), 0, flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
-        vbox.Add(audioBox(), 0, flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
-        vbox.Add(actionBox(), 1, flag=wx.EXPAND | wx.ALL, border=10)
-
-        #sb = wx.StaticBox(panel, label="Optional Attributes")
-        #boxsizer = wx.StaticBoxSizer(sb, wx.VERTICAL)
-        #boxsizer.Add(wx.CheckBox(panel, label="Public"), flag=wx.LEFT | wx.TOP,
-        #             border=5)
-        #boxsizer.Add(wx.CheckBox(panel, label="Generate Default Constructor"),
-        #             flag=wx.LEFT, border=5)
-        #boxsizer.Add(wx.CheckBox(panel, label="Generate Main Method"),
-        #             flag=wx.LEFT | wx.BOTTOM, border=5)
-        #vbox.Add(boxsizer, 1, flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
+        vbox.Add(targetBox(), 0, flag=flags, border=10)
+        vbox.Add(geometryBox(), 0, flag=flags, border=10)
+        vbox.Add(videoBox(), 0, flag=flags, border=10)
+        vbox.Add(audioBox(), 0, flag=flags, border=10)
+        vbox.AddSpacer(10)
 
         panel.SetAutoLayout(True)
         panel.SetSizer(vbox)
-        #sizer = wx.GridBagSizer(5, 5)
 
-        #icon = wx.StaticBitmap(panel, bitmap=wx.Bitmap('exec.png'))
-        #sizer.Add(icon, pos=(0, 4), flag=wx.TOP | wx.RIGHT | wx.ALIGN_RIGHT,
-        #          border=5)
+    def OnCloseWindow(self, event):
+        self.ConfigSave()
+        self.Destroy()
+        logging.debug('Quit UiAdvanced')
 
-        #line = wx.StaticLine(panel)
-        #sizer.Add(line, pos=(1, 0), span=(1, 5), flag=wx.EXPAND | wx.BOTTOM,
-        #          border=10)
+    def OnTargetChosen(self, evt):
+        cb = evt.GetEventObject()
+        data = cb.GetClientData(evt.GetSelection())
+        logging.info('OnTargetChosen: {} ClientData: {}'.format(
+                     evt.GetString(), data))
 
-        #text2 = wx.StaticText(panel, label="Name")
-        #sizer.Add(text2, pos=(2, 0), flag=wx.LEFT, border=10)
+    def OnTargetKey(self, evt):
+        logging.info('OnTargetKey: %s' % evt.GetString())
+        evt.Skip()
 
-        #tc1 = wx.TextCtrl(panel)
-        #sizer.Add(tc1, pos=(2, 1), span=(1, 3), flag=wx.TOP | wx.EXPAND)
+    def OnTargetKeyEnter(self, evt):
+        logging.info('OnTargetKeyEnter: %s' % evt.GetString())
+        evt.Skip()
 
-        #text3 = wx.StaticText(panel, label="Package")
-        #sizer.Add(text3, pos=(3, 0), flag=wx.LEFT | wx.TOP, border=10)
+    def OnClickSelectionArea(self, evt):
+        self._core.launch_selection_area_process()
 
-        #tc2 = wx.TextCtrl(panel)
-        #sizer.Add(tc2, pos=(3, 1), span=(1, 3), flag=wx.TOP | wx.EXPAND,
-        #          border=5)
-
-        #button1 = wx.Button(panel, label="Browse...")
-        #sizer.Add(button1, pos=(3, 4), flag=wx.TOP | wx.RIGHT, border=5)
-
-        #text4 = wx.StaticText(panel, label="Extends")
-        #sizer.Add(text4, pos=(4, 0), flag=wx.TOP | wx.LEFT, border=10)
-
-        #combo = wx.ComboBox(panel)
-        #sizer.Add(combo, pos=(4, 1), span=(1, 3), flag=wx.TOP | wx.EXPAND,
-        #          border=5)
-
-        #button2 = wx.Button(panel, label="Browse...")
-        #sizer.Add(button2, pos=(4, 4), flag=wx.TOP | wx.RIGHT, border=5)
-
-        #sb = wx.StaticBox(panel, label="Optional Attributes")
-
-        #button3 = wx.Button(panel, label='Help')
-        #sizer.Add(button3, pos=(7, 0), flag=wx.LEFT, border=10)
-
-        #button4 = wx.Button(panel, label="Ok")
-        #sizer.Add(button4, pos=(7, 3))
-
-        #button5 = wx.Button(panel, label="Cancel")
-        #sizer.Add(button5, pos=(7, 4), span=(1, 1), flag=wx.BOTTOM | wx.RIGHT,
-        #          border=5)
-
-        #sizer.AddGrowableCol(2)
+    def OnClickStream(self, evt):
+        core = self._core
+        obj = evt.GetEventObject()
+        inp = self._input
+        if core.is_streaming():
+            core.stream_server_stop()
+            obj.SetLabel('Stream')
+            return
+        core.stream_server_start(video_input=inp['video_input'].GetValue(),
+                                 audio_input=inp['audio_input'].GetValue(),
+                                 video_output=inp['video_output'].GetValue(),
+                                 audio_output=inp['audio_output'].GetValue(),
+                                 x=inp['x'].GetValue(),
+                                 y=inp['y'].GetValue(),
+                                 w=inp['w'].GetValue(),
+                                 h=inp['h'].GetValue())
+        obj.SetLabel('Stop')
 
 
-class Core(object):
-    def StartStreaming(self):
-        pass
+def sync(func):
+    def wrapper(*args, **kv):
+        self = args[0]
+        self._lock.acquire()
+        try:
+            return func(*args, **kv)
+        finally:
+            self._lock.release()
+    return wrapper
 
-    def StopStreaming(self):
-        pass
 
-    def MediaConnectionLisener(self):
-        pass
+class Core(Thread):
+    def __init__(self, args, extra_args):
+        Thread.__init__(self)
+        self._lock = Lock()
+        self._args = args
+        self._extra_args = extra_args
+        self._threads = []
+        self._listener = []
+        signal.signal(signal.SIGCHLD, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
 
-    def AvahiListener(self):
-        #create the event
-        evt = SomeNewEvent(attr1="hello", attr2=654)
-        #post the event
-        wx.PostEvent(target, evt)
+    def register_listener(self, ui_window):
+        if ui_window not in self._listener:
+            self._listener.append(ui_window)
+
+    def is_streaming(self):
+        if hasattr(self, '_stream_server') and self._stream_server is not None:
+            return True
+        return False
+
+    def stream_server_start(self, *args, **kargs):
+        if self.is_streaming():
+            return
+        self._stream_server = StreamServer(kargs)
+        self._stream_server.start()
+
+    def stream_server_stop(self):
+        if hasattr(self, '_stream_server') and self._stream_server is not None:
+            self._stream_server.stop()
+            self._stream_server = None
+
+    @property
+    def targets(self):
+        if not hasattr(self, '_avahi_browse'):
+            return []
+        return self._avahi_browse.targets
+
+    def run(self):
+        self._avahi_browse = AvahiBrowse(lambda data:
+                                         self.process_event('avahi', data))
+        self._threads.append(self._avahi_browse)
+
+        for thread in self._threads:
+            thread.start()
+        for thread in self._threads:
+            thread.join()
+
+    def stop(self):
+        for thread in self._threads:
+            thread.stop()
+        self.stream_server_stop()
+
+    def launch_selection_area_process(self):
+        SelectionArea(lambda data:
+                      self.process_event('selection', data)).start()
+
+    @sync
+    def process_event(self, obj_id, data):
+        def event_avahi(data):
+            evt = SomeNewEvent(attr1="avahi", attr2=data)
+            for listener in self._listener:
+                wx.PostEvent(listener, evt)
+
+        def event_selection(data):
+            evt = SomeNewEvent(attr1="selection", attr2=data)
+            for listener in self._listener:
+                wx.PostEvent(listener, evt)
+
+        dispatch_map = {'avahi': event_avahi,
+                        'selection': event_selection}
+        if obj_id in dispatch_map:
+            dispatch_map[obj_id](data)
+            return
+        logging.error('event not process: ' + obj_id)
+
+    def signal_handler(self, signum, frame):
+        logging.info('signal: ' + str(signum))
+        if signal.SIGTERM == signum:
+            self.send_form_destroy()
+        elif signal.SIGCHLD == signum:
+            os.waitpid(-1, os.WNOHANG)
+
+
+class StreamServer(Thread):
+    def __init__(self, args):
+        Thread.__init__(self)
+        self._args = args
+
+    def run(self):
+        logging.debug('args: {}'.format(self._args))
+        params = (self._args['video_input'] +
+                  ' {video_output}'
+                  ' tcp://127.0.0.1:12345?listen'
+                  ).format(video_input=self._args['video_input'],
+                           video_output=self._args['video_output'],
+                           x=self._args['x'],
+                           y=self._args['y'],
+                           w=self._args['w'],
+                           h=self._args['h'])
+        cmdline = ['/home/u/src/desktop-mirror/desktop-mirror/ffmpeg'] + shlex.split(params)
+        logging.info('StreamServer start: ' + ' '.join(cmdline))
+        self.proc = subprocess.Popen(cmdline,
+                                     stdout=subprocess.PIPE)
+        try:
+            while True:
+                self.proc.stdout.readline()
+        except:
+            pass
+
+    def stop(self):
+        try:
+            self.proc.kill()
+        except OSError:
+            # maybe already dead
+            pass
+        logging.info('StreamServer stop')
+
+
+class SelectionArea(Thread):
+    def __init__(self, callback):
+        Thread.__init__(self)
+        self._callback = callback
+
+    def run(self):
+        cmd = Command('./xrectsel "%x %y %w %h"', True, True).run()
+        line = cmd.stdout.split()
+        self._callback(line[0:4])
+
+
+class AvahiBrowse(Thread):
+    def __init__(self, callback):
+        Thread.__init__(self)
+        self._callback = callback
+        self._stoped = True
+        self._targets = []
+
+    @classmethod
+    def query_targets(cls):
+        cmd = Command('avahi-browse -arckp', True, True).run()
+        targets = []
+        for line in cmd.stdout.split('\n'):
+            fields = [cls.hostname_decode(f) for f in line.split(';')[1:]]
+            if len(fields) >= 8:
+                targets.append(fields)
+        #logging.debug('query_targets: {0}'.format(targets))
+        return targets
+
+    @classmethod
+    def hostname_decode(cls, raw):
+        output = ''
+        i, max = 0, len(raw)
+        while i < max:
+            if raw[i] != '\\':
+                output += raw[i]
+                i += 1
+            else:
+                tmp = ' '
+                try:
+                    tmp = chr(int(raw[i + 1:i + 4]))
+                except ValueError:
+                    pass
+                output += tmp
+                i += 4
+        return output
+
+    @property
+    def targets(self):
+        return self._targets
+
+    def run(self):
+        self._stoped = False
+        self.proc = subprocess.Popen(['avahi-browse', '-akp'],
+                                     stdout=subprocess.PIPE)
+        while not self._stoped:
+            line = self.proc.stdout.readline()
+            if line == '':
+                break
+            fields = [self.__class__.hostname_decode(f)
+                      for f in line.rstrip().split(';')]
+            self.fire_event(fields)
+        self.proc.kill()
+        self._stoped = True
+
+    def stop(self):
+        self.proc.kill()
+        self._stoped = True
+
+    def fire_event(self, data):
+        def callback(data):
+            self._targets = self.__class__.query_targets()
+            self._callback(data)
+        if hasattr(self, '_fire_timer') and self._fire_timer is not None:
+            self._fire_timer.cancel()
+        self._fire_timer = Timer(1.0, lambda: callback(data))
+        self._fire_timer.start()
+
+
+class MyArgumentParser(object):
+    """Command-line argument parser
+    """
+    def __init__(self):
+        """Create parser object
+        """
+        description = ('IBS command line interface. '
+                       '')
+
+        epilog = ('')
+        parser = ArgumentParser(description=description, epilog=epilog)
+        log_levels = ['notset', 'debug', 'info',
+                      'warning', 'error', 'critical']
+        parser.add_argument('--log-level', dest='log_level_str',
+                            default='info', choices=log_levels,
+                            help=('Log level. '
+                                  'One of {0} or {1} (%(default)s by default)'
+                                  .format(', '.join(log_levels[:-1]),
+                                          log_levels[-1])))
+        parser.add_argument('--log-dir', dest='log_dir', default='/tmp/',
+                            help=('Path to the directory to store log files'))
+        parser.add_argument('-z', '--zsync-input', dest='zsync_file',
+                            default=None,
+                            help=('file path of zsync input path'))
+        parser.add_argument('--config-dir', dest='config_dir',
+                            default=os.path.join(wx.StandardPaths_Get().GetUserConfigDir(),
+                                                 '.config', 'desktop-mirror'),
+                            help=SUPPRESS)
+        parser.add_argument('-g', '--osd', action='store_true', dest="osd",
+                            default=False,
+                            help=('show OSD notify during monitor'))
+        # Append to log on subsequent startups
+        parser.add_argument('--append', action='store_true',
+                            default=False, help=SUPPRESS)
+
+        self.parser = parser
+
+    def parse(self):
+        """Parse command-line arguments
+        """
+        args, extra_args = self.parser.parse_known_args()
+        args.log_level = getattr(logging, args.log_level_str.upper())
+
+        # Log filename shows clearly the type of test (pm_operation)
+        # and the times it was repeated (repetitions)
+        args.log_filename = os.path.join(args.log_dir,
+                                         ('{0}.log'
+                                          .format(os.path.basename(__file__))))
+        return args, extra_args
+
+
+def main():
+    args, extra_args = MyArgumentParser().parse()
+
+    LoggingConfiguration.set(args.log_level, args.log_filename, args.append)
+    logging.debug('Arguments: {0!r}'.format(args))
+    logging.debug('Extra Arguments: {0!r}'.format(extra_args))
+
+    core = Core(args, extra_args)
+    try:
+        core.start()
+        app = wx.App()
+        UiAdvanced(None, title="Desktop Mirror - Advanced", core=core)
+        app.MainLoop()
+    except KeyboardInterrupt:
+        logging.info('^c')
+    finally:
+        core.stop()
+        core.join()
 
 
 if __name__ == '__main__':
-
-    app = wx.App()
-    Example(None, title="Desktop Mirror - Advanced")
-    app.MainLoop()
+    main()

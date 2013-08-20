@@ -1,0 +1,670 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+__version__ = '0.7'
+__all__ = ['IbsCli']
+__author__ = 'DoroWu'
+__home_page__ = ''
+
+import os, sys
+import getpass
+import re
+import logging
+import logging.handlers
+from argparse import ArgumentParser, SUPPRESS
+import glob
+import subprocess
+import json
+import time
+import urllib2
+import shutil
+import mechanize
+import cookielib
+from HTMLParser import HTMLParser
+
+class MLStripper(HTMLParser):
+    def __init__(self):
+        self.reset()
+        self.fed = []
+    def handle_data(self, d):
+        self.fed.append(d)
+    def get_data(self):
+        return ''.join(self.fed)
+
+
+class IbsCli(object):
+    def __init__(self, args, extra_args):
+        self._args = args
+        self._extra_args = extra_args
+
+    @property
+    def projects(self):
+        """ Return projects
+        """
+        pass
+
+    @property
+    def project_build_results(self, project_name):
+        """ Return build results
+        """
+        pass
+
+    @property
+    def cookie(self):
+        if hasattr(self, '_cookie'):
+            return self._cookie
+        self._cookie = cookielib.LWPCookieJar()
+        if os.path.exists(os.path.join(self._args.config_dir, 'mycookie')):
+            self._cookie.load(os.path.join(self._args.config_dir, 'mycookie'))
+        return self.cookie
+
+    @property
+    def browser(self):
+        if hasattr(self, '_br'):
+            return self._br
+        br = self._br = mechanize.Browser()
+
+        # XXX saving the cookie and dynamically prompting
+        # for requisite informations
+        # Cookie Jar
+        br.set_cookiejar(self.cookie)
+
+        # Browser options
+        br.set_handle_equiv(True)
+        br.set_handle_gzip(False) #XXX messes up stdin
+        br.set_handle_redirect(True)
+        br.set_handle_referer(True)
+        br.set_handle_robots(False)
+
+        br.addheaders = [('User-agent', 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:19.0) Gecko/20100101 Firefox/19.0')]
+
+        ## Want debugging messages?
+        if self._args.log_level <= logging.DEBUG:
+            br.set_debug_http(True)
+            br.set_debug_redirects(True)
+            br.set_debug_responses(True)
+        return self._br
+
+    def build_project(self, project_name):
+        """ Build
+        """
+        pass
+
+    def download(self, base_path, base_url, url):
+        def chunk_report(bytes_so_far, chunk_size, total_size):
+            percent = float(bytes_so_far) / total_size
+            percent = round(percent*100, 2)
+            sys.stdout.write("Downloaded %d of %d bytes (%0.2f%%)\r" % 
+                (bytes_so_far, total_size, percent))
+
+            if bytes_so_far >= total_size:
+                sys.stdout.write('\n')
+
+        def chunk_read(response, file, chunk_size=8192, report_hook=None):
+            total_size = response.info().getheader('Content-Length').strip()
+            total_size = int(total_size)
+            bytes_so_far = 0
+
+            while 1:
+                chunk = response.read(chunk_size)
+                bytes_so_far += len(chunk)
+
+                if not chunk:
+                    break
+                file.write(chunk)
+
+                if report_hook:
+                    report_hook(bytes_so_far, chunk_size, total_size)
+
+            return bytes_so_far
+
+        def download_all(base_path, base_url, url):
+            def find_records(html):
+                record_regex = re.compile('<tr><td.*<a href=["\']?([^"\']*)["\']?>(.*)</a>.*</td></tr>')
+                links = []
+                for line in html.split('\n'):
+                    line.strip()
+                    #print line
+                    m = record_regex.match(line)
+                    if not m:
+                        continue
+                    #print 'bingo: {0}:{1}'.format(m.group(1), m.group(2))
+                    links.append((m.group(1), m.group(2)))
+                return links
+
+            logging.info('Open dir {0}'.format(url))
+            try:
+                r = self.browser.open(base_url + url)
+            except Exception as e:
+                logging.debug('browser.open: ' + str(e))
+                return
+            try:
+                html = r.read()
+                for link in find_records(html)[1:]:
+                    if link[0][-1] == '/':
+                        download_all(base_path, base_url, url + link[0])
+                        continue
+                    if any(link[0].endswith(x) for x in ('.iso.zsync', '.img.zsync')):
+                        continue
+                    if any(link[0].endswith(x) for x in ('.iso', '.img')):
+                        compare_link = link[0] + '.zsync'
+                        result = False
+                        for link_check in find_records(html)[1:]:
+                            if link_check[0] != compare_link:
+                                continue
+                            result = download_one_zsync(base_path, base_url, url + link[0])
+                            break
+                        if result:
+                            break
+                        logging.info('No zsync file or error during process: ' + url + link[0])
+                        result = download_one_rsync(base_path, base_url, url + link[0])
+                        if result:
+                            break
+                    download_one(base_path, base_url, url + link[0])
+            except IndexError:
+                pass
+
+        def download_one(base_path, base_url, url, not_download=False, ifile=False):
+            logging.debug('Open file {0}'.format(url))
+
+            filename = os.path.join(base_path, url.replace('/', os.sep))
+            if url.find('/') != -1:
+                dirname = os.path.dirname(filename)
+                if not os.path.exists(dirname):
+                    logging.debug('Create dir: ' + dirname)
+                    os.makedirs(dirname)
+            if ifile:
+                try:
+                    logging.debug('Copy file from {0} to {1}'.format(ifile, filename))
+                    shutil.copyfile(ifile, filename)
+                except Exception:
+                    logging.warn('Failed to copy from {0} to {1}'.format(ifile, filename))
+            if not_download:
+                return filename
+
+            logging.info('Download {0}'.format(url))
+            try:
+                r = self.browser.open(base_url + url)
+                with open(filename, 'wb+') as f:
+                    chunk_read(r, file=f, report_hook=chunk_report)
+            except Exception:
+                logging.warn('Failed to download {0}{1}'.format(base_url, url))
+
+        def download_one_rsync(base_path, base_url, url):
+            if not os.path.exists('/usr/bin/rsync'):
+                logging.debug('No rsync found in /usr/bin. Revert')
+                return False
+            logging.debug('fork rsync process for {0}'.format(url))
+            # infile
+            ifile = ''
+            files = glob.glob(os.path.join(base_path, '..', '..', '*', '*', 'images', '*', '*.iso'))
+            if len(files) <= 0:
+                files = glob.glob(os.path.join(base_path, '..', '..', '*', '*', 'images', '*', '*.img'))
+            path_prefix = os.path.join(base_path, '..', '..')
+            biggest = 0
+            for file in files:
+                logging.debug('file 1: ' + file)
+                file_no_prefix = file[len(path_prefix) + 1:]
+                logging.debug('file 2: ' + file_no_prefix)
+                file_list = file_no_prefix.split(os.sep)
+                logging.debug('pair: ' + str((file_list[0], file_list[1])))
+                t = int(file_list[0] + file_list[1])
+                if t > biggest:
+                    biggest = t
+                    ifile = file
+            if not ifile:
+                logging.debug('No reference file found. Revert')
+                return False
+            # outfile
+            ofile = download_one(base_path, base_url, url, True, ifile)
+            # Assuming username and ssh key has been setup in .ssh/config
+            rsync_url = base_url.replace('https://oem-share.canonical.com', 'oem-share.canonical.com:/srv/oem-share.canonical.com/www') + url
+            cmd = 'rsync -Pv {url} {ofile}'.format(url=rsync_url, ofile=ofile)
+            logging.info('Start rsync process')
+            logging.debug('Run command: ' + cmd)
+            result = subprocess.call(cmd, shell=True)
+            logging.debug('Command result: ' + str(result))
+            if result != 0:
+                logging.warn('rsync failed with result ' + str(result))
+                return False
+            return True
+
+        def download_one_zsync(base_path, base_url, url):
+            if not os.path.exists('/usr/bin/zsync_curl'):
+                logging.debug('No zsync_curl found in /usr/bin. Revert')
+                return False
+            logging.debug('fork zsync process for {0}'.format(url))
+            # cookie
+            cookie_str = None
+            with open(os.path.join(self._args.config_dir, 'mycookie'), 'r') as f:
+                for line in f:
+                    loc_pysid = line.find('pysid=')
+                    if loc_pysid < 0:
+                        continue
+                    loc_pysid_end = line.find(';', loc_pysid)
+                    if loc_pysid_end < 0:
+                        continue
+                    cookie_str = line[loc_pysid:loc_pysid_end]
+                    break
+            if not cookie_str:
+                logging.debug('No cookie pysid found. Revert')
+                return False
+            # infile
+            ifile = self._args.zsync_file
+            if not ifile:
+                files = glob.glob(os.path.join(base_path, '..', '..', '*', '*', 'images', '*', '*.iso'))
+                if len(files) <= 0:
+                    files = glob.glob(os.path.join(base_path, '..', '..', '*', '*', 'images', '*', '*.img'))
+                path_prefix = os.path.join(base_path, '..', '..')
+                biggest = 0
+                for file in files:
+                    logging.debug('file 1: ' + file)
+                    file_no_prefix = file[len(path_prefix) + 1:]
+                    logging.debug('file 2: ' + file_no_prefix)
+                    file_list = file_no_prefix.split(os.sep)
+                    logging.debug('pair: ' + str((file_list[0], file_list[1])))
+                    t = int(file_list[0] + file_list[1])
+                    if t > biggest:
+                        biggest = t
+                        ifile = file
+            if not ifile:
+                logging.debug('No reference file found. Revert')
+                return False
+            # outfile
+            ofile = download_one(base_path, base_url, url, True)
+            cmd = 'zsync_curl -c {cookie} {url} -i {ifile} -o {ofile}'.format(
+                    cookie=cookie_str,
+                    url=base_url + url + '.zsync',
+                    ifile=ifile,
+                    ofile=ofile)
+            logging.info('Start zsync process')
+            logging.debug('Run command: ' + cmd)
+            result = subprocess.call(cmd, shell=True)
+            logging.debug('Command result: ' + str(result))
+            if result != 0:
+                logging.warn('zsync failed with result ' + str(result))
+                return False
+            return True
+
+        if url[-1] == ('/'):
+            download_all(base_path, base_url, url)
+        else:
+            download_one(base_path, base_url, url)
+
+    def monitor_project_build(self, project_name):
+        """ Monitor status change of specified build of project
+        """
+        pass
+
+    def fetch_page(self, page_url):
+        br = self.browser
+        logging.debug('open ' + page_url)
+        r = br.open(page_url)
+        html = r.read()
+
+        try:
+            br.select_form('oid_form')
+            logging.debug('open oid_form')
+            r = br.submit()
+            html = r.read()
+        except Exception:
+            logging.debug('no oid_form')
+
+        try:
+            for form in br.forms():
+                if 'openid_message' != form.attrs['id']:
+                    continue
+                br.form = form
+                logging.debug('open openid_message')
+                r = br.submit()
+                html = r.read()
+                break
+            else:
+                pass
+        except Exception:
+            logging.debug('no openid_message')
+
+        try:
+            br.select_form(name='loginform')
+            br['email']    = raw_input('username: ')
+            br['password'] = getpass.getpass()
+            logging.debug('open loginform')
+            r = br.submit()
+            html = r.read()
+        except Exception:
+            logging.debug('no loginform')
+
+        try:
+            br.select_form(name='loginform')
+            logging.debug('open loginform for 2-factor')
+            br['oath_token'] = getpass.getpass('2-factor token: ')
+            logging.debug('input oath_token')
+            r = br.submit()
+            html = r.read()
+        except Exception:
+            logging.debug('no loginform for 2-factor')
+
+        try:
+            br.select_form(name='decideform')
+            logging.debug('open decideform')
+            r = br.submit()
+            html = r.read()
+        except Exception:
+            logging.debug('no decideform')
+
+        # check last page is not a loginform
+        has_last_loginform = False
+        try:
+            br.select_form(name='loginform')
+            has_last_loginform = True
+        except Exception:
+            # pass
+            logging.debug('last loginform check: no')
+        if has_last_loginform:
+            raise PermissionDenied()
+
+        if self._args.log_level <= logging.DEBUG:
+            with open(os.path.join(self._args.log_dir, 'ibs-cli.html'), 'wb+') as f:
+                f.write(html)
+        self.cookie.save(os.path.join(self._args.config_dir, 'mycookie'), ignore_discard=True)
+        return html
+
+    def project_status(self):
+        if not self._args.proj_name:
+            logging.critical('No project name provided (-p proj_name)')
+            return
+        page_url = 'https://oem-ibs.canonical.com/projects/{0}/'.format(
+                   self._args.proj_name)
+        html = self.fetch_page(page_url)
+        #with open('p3.html', 'wb+') as f:
+        #with open('p3.html', 'r') as f:
+        #    f.write(html)
+        #    html = f.read()
+        loc = html.find('<dt>Build Status:')
+        if loc < 0:
+            return ''
+        loc = html.find('<dd>', loc)
+        loc_end = html.find('</dd>', loc)
+        if loc < 0 or loc_end < 0:
+            return ''
+        return html[loc + 4:loc_end]
+
+    def act_list_projects(self):
+        page_url = 'https://oem-ibs.canonical.com/'
+        html = self.fetch_page(page_url + 'projects/')
+        #with open('p1.html', 'wb+') as f:
+        #with open('p1.html', 'r') as f:
+        #    #f.write(html)
+        #    html = f.read()
+        projects_regex = re.compile('<a href="/projects/(.+)/">(.+)</a>'
+                                    , re.MULTILINE)
+        logging.info('  {0:40}   {1}'.format('[Codename]', '[Title]'))
+        for p in projects_regex.finditer(html):
+            logging.info('- {0:40} - {1}'.format(p.group(1), p.group(2)))
+
+    def act_list_builds(self):
+        if not self._args.proj_name:
+            logging.critical('No project name provided (-p proj_name)')
+            return
+        page_url = 'https://oem-ibs.canonical.com/builds/+api/{0}/'.format(
+                   self._args.proj_name)
+        html = self.fetch_page(page_url)
+        #with open('p1.html', 'wb+') as f:
+        #with open('p1.html', 'r') as f:
+        #    f.write(html)
+        #    html = f.read()
+        logging.info('  {0:15}   {1:20}   {2:20}   {3}'.format(
+                     '[build name]', '[start]', '[finish]', '[result]'))
+        for r in json.loads(html):
+            logging.info('- {0:15} - {1:20s} - {2:20s} - {3}'.format(
+                         r['name'],
+                         r['started_at'],
+                         r['finished_at'],
+                         r['result']))
+
+    def act_build(self):
+        if not self._args.proj_name:
+            logging.critical('No project name provided (-p proj_name)')
+            return
+        page_url = 'https://oem-ibs.canonical.com/projects/{0}/+build'.format(
+                   self._args.proj_name)
+        #logging.info(page_url)
+        self.fetch_page(page_url)
+        #with open('p2.html', 'wb+') as f:
+        #with open('p1.html', 'r') as f:
+        #    f.write(html)
+        #    html = f.read()
+        logging.info('{0} - {1}'.format(self._args.proj_name, self.project_status()))
+
+    def act_download(self):
+        """ Download
+        """
+        def find_records(html):
+            record_regex = re.compile(
+                    '<tr><td.*'
+                    '<a href=["\']?([^"\']*)["\']?>(.*)</a>'
+                    '.*</td></tr>')
+            links = []
+            for line in html.split('\n'):
+                line.strip()
+                #print line
+                m = record_regex.match(line)
+                if not m:
+                    continue
+                #print 'bingo: {0}:{1}'.format(m.group(1), m.group(2))
+                links.append((m.group(1), m.group(2)))
+            return links
+
+        if not self._args.proj_name:
+            logging.critical('No project name provided (-p proj_name)')
+            return
+        logging.info('Downloading...')
+        page_url = 'https://oem-share.canonical.com/oem/cesg-builds/{0}/'.format(
+                    self._args.proj_name)
+        html = self.fetch_page(page_url)
+        br = self.browser
+        
+        if self._args.build_name:
+            try:
+                date_url, nr_in_date_url = self._args.build_name.split('-')
+                date_url += '/'
+                nr_in_date_url += '/'
+            except Exception:
+                logging.critical('No build_name: ' + self._args.build_name)
+                return
+        else:
+            logging.info('Find the latest build')
+            # project/YYYYMMDD
+            links = find_records(html)
+            try:
+                date_url = links[-1][0]
+		if date_url == 'archive/':
+			date_url = links[-2][0]
+                r = br.open(page_url + date_url)
+                html = r.read()
+            except IndexError:
+                print 'Error follow link'
+                return
+            except Exception:
+                print 'Error follow link {0}{1}YYYYMMDD'.format(page_url, date_url)
+                return
+
+            # project/YYYYMMDD/N
+            links = find_records(html)
+            try:
+                nr_in_date_url = links[-1][0]
+            except Exception:
+                print 'No link N'
+                return
+
+        record_url = page_url + date_url + nr_in_date_url
+        #urls_to_fetch = ('build-log.txt', 'config/manifest.html')
+        #urls_to_fetch = ('build-log.txt', 'config/acubens.manifest', 'images/usb-hdd/')
+        urls_to_fetch = ('build-log.txt', 'config/manifest.html', 'images/iso/', 'config/acubens.manifest', 'images/usb-hdd/')
+        #urls_to_fetch = ('images/iso/',)
+
+        path_to_store = \
+            os.path.join('download', self._args.proj_name,
+                         date_url if date_url[-1] != '/' else date_url[:-1], 
+                         nr_in_date_url if nr_in_date_url[-1] != '/' else nr_in_date_url[:-1])
+        if not os.path.exists(path_to_store):
+            print 'Create dir: ' + path_to_store
+            os.makedirs(path_to_store)
+
+        for url in urls_to_fetch:
+            self.download(path_to_store, record_url, url)
+
+    def act_monitor(self):
+        def strip_tags(html):
+            s = MLStripper()
+            s.feed(html)
+            return s.get_data()
+        result = None
+        while True:
+            try:
+                tmp = self.project_status()
+                if len(tmp) != 0:
+                    if tmp != result:
+                        text = strip_tags(tmp).strip()
+                        logging.info('{0} - {1}'.format(
+                                     self._args.proj_name, text))
+                        if self._args.osd:
+                            subprocess.call('notify-send "IBS - {0}" "{1}"'.format(
+                                            self._args.proj_name, text)
+                                            , shell=True)
+                        result = tmp
+                else:
+                    logging.debug('No status got')
+                time.sleep(10)
+            except urllib2.URLError:
+                logging.debug('URLError when act_monitor')
+
+    def act_version(self):
+        print __version__
+
+    def run(self):
+        action_fns = {'list-projects': self.act_list_projects,
+                      'list-builds': self.act_list_builds,
+                      'build': self.act_build,
+                      'download': self.act_download,
+                      'monitor': self.act_monitor,
+                      'version': self.act_version,}
+        if not os.path.exists(self._args.config_dir):
+            os.makedirs(self._args.config_dir)
+        if len(self._extra_args) > 0:
+            action_fns[self._args.action](self._extra_args)
+        else:
+            action_fns[self._args.action]()
+
+
+class PermissionDenied(Exception):
+    pass
+
+
+class LoggingConfiguration(object):
+    @classmethod
+    def set(cls, log_level, log_filename, append):
+        """ Configure a rotating file logging
+        """
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
+
+        # Log to sys.stderr using log level passed through command line
+        if log_level != logging.NOTSET:
+            log_handler = logging.StreamHandler(sys.stdout)
+            formatter = logging.Formatter('%(levelname)-8s %(message)s')
+            log_handler.setFormatter(formatter)
+            log_handler.setLevel(log_level)
+            logger.addHandler(log_handler)
+
+        # Log to rotating file using DEBUG log level
+        log_handler = logging.handlers.RotatingFileHandler(log_filename,
+                                                           mode='a+',
+                                                           backupCount=3)
+        formatter = logging.Formatter('%(asctime)s %(levelname)-8s '
+                                      '%(message)s')
+        log_handler.setFormatter(formatter)
+        log_handler.setLevel(logging.DEBUG)
+        logger.addHandler(log_handler)
+
+        if not append:
+            # Create a new log file on every new
+            # (i.e. not scheduled) invocation
+            log_handler.doRollover()
+
+
+class MyArgumentParser(object):
+    """Command-line argument parser
+    """
+    def __init__(self):
+        """Create parser object
+        """
+        description = ('IBS command line interface. '
+                       '')
+
+        epilog = ('')
+        parser = ArgumentParser(description=description, epilog=epilog)
+        log_levels = ['notset', 'debug', 'info',
+                      'warning', 'error', 'critical']
+        parser.add_argument('--log-level', dest='log_level_str',
+                            default='info', choices=log_levels,
+                            help=('Log level. '
+                                  'One of {0} or {1} (%(default)s by default)'
+                                  .format(', '.join(log_levels[:-1]),
+                                          log_levels[-1])))
+        parser.add_argument('--log-dir', dest='log_dir', default='/tmp/',
+                            help=('Path to the directory to store log files'))
+        parser.add_argument('-p', '--project', dest='proj_name', 
+                            help=('codename such as dell-bto-precise-palm-beach-mlk-precise'))
+        parser.add_argument('-b', dest='build_name', 
+                            help=('build name such as 20130412-0'))
+        parser.add_argument('-z', '--zsync-input', dest='zsync_file', 
+                            default=None,
+                            help=('file path of zsync input path'))
+        parser.add_argument('--config-dir', dest='config_dir', 
+                            default=os.path.join(os.path.expanduser('~'), '.config', 'ibs-cli'),
+                            help=SUPPRESS)
+        parser.add_argument('-g', '--osd', action='store_true', dest="osd", default=False,
+                            help=('show OSD notify during monitor'))
+        actions = ['list-projects', 'list-builds', 'build', 'download', 'monitor', 'version']
+        parser.add_argument('action', choices=actions, 
+                            default='check',
+                            help=('Action is one of {0}'.
+                                  format(', '.join(actions))))
+        # Append to log on subsequent startups
+        parser.add_argument('--append', action='store_true',
+                            default=False, help=SUPPRESS)
+
+        self.parser = parser
+
+    def parse(self):
+        """Parse command-line arguments
+        """
+        args, extra_args = self.parser.parse_known_args()
+        args.log_level = getattr(logging, args.log_level_str.upper())
+
+        # Log filename shows clearly the type of test (pm_operation)
+        # and the times it was repeated (repetitions)
+        args.log_filename = os.path.join(args.log_dir,
+                                         ('{0}.log'
+                                          .format(os.path.basename(__file__))))
+        return args, extra_args
+
+
+def main():
+    args, extra_args = MyArgumentParser().parse()
+
+    LoggingConfiguration.set(args.log_level, args.log_filename, args.append)
+    logging.debug('Arguments: {0!r}'.format(args))
+    logging.debug('Extra Arguments: {0!r}'.format(extra_args))
+
+    try:
+        IbsCli(args, extra_args).run()
+    except PermissionDenied:
+        logging.critical('Permission Denied (email, password or 2FA token error)')
+    except KeyboardInterrupt:
+        logging.info('^c')
+
+
+if __name__ ==  '__main__':
+    main()

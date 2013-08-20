@@ -1,0 +1,19 @@
+1.1.1 (2008-05-08)
+------------------
+
+* All DNS-SD API calls are now made after acquiring a global lock
+  object.  This object is a dummy (i.e. acquire() and release() do
+  nothing), except in the case where pybonjour is using Avahi's
+  Bonjour compatibility layer, in which case the lock is a
+  threading.RLock instance.  This is necessary because the
+  compatibility layer is not thread safe.
+
+* Added browse_resolve_query.py to examples
+
+* Moved unit tests to test_pybonjour.py
+
+
+1.1.0 (2007-06-14)
+------------------
+
+* Added TXTRecord class for generating and parsing DNS TXT records

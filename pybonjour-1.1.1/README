@@ -1,0 +1,57 @@
+----------------------------------------------------
+pybonjour:  Pure-Python interface to Apple Bonjour
+
+Author: Christopher Stawarz <cstawarz@csail.mit.edu>
+Version: 1.1.1
+May 8, 2008
+----------------------------------------------------
+
+
+Introduction
+------------
+
+pybonjour provides a pure-Python interface (via ctypes) to Apple
+Bonjour and compatible DNS-SD libraries (such as Avahi).  It allows
+Python scripts to take advantage of Zero Configuration Networking
+(Zeroconf) to register, discover, and resolve services on both local
+and wide-area networks.  Since pybonjour is implemented in pure
+Python, scripts that use it can easily be ported to Mac OS X, Windows,
+Linux, and other systems that run Bonjour.
+
+pybonjour is free software, distributed under the MIT license.
+
+
+Requirements
+------------
+
+pybonjour requires Python 2.4 or later.  It also depends on ctypes
+(version 1.0.1 or later), which is part of the standard library in
+Python 2.5 but must be downloaded and installed separately for Python
+2.4.
+
+No additional software is required to use pybonjour under Mac OS X.
+To use it under Windows, the Bonjour for Windows package must be
+installed on your system.  Most Linux systems use Avahi rather than
+Bonjour for DNS-SD.  If this is the case on your system, you'll need
+to install Avahi's Bonjour compatibility library.  (Under Ubuntu, the
+package to install is libavahi-compat-libdnssd1.)  Otherwise, or to
+use pybonjour under other POSIX systems, you must download, compile,
+and install Bonjour from source.
+
+Both the Bonjour for Windows package and the latest Bonjour source
+code are available for download at
+
+  http://developer.apple.com/networking/bonjour/download/
+
+
+Documentation
+-------------
+
+pybonjour provides extensive online documentation, which can be
+accessed from the Python prompt via 'help(pybonjour)'.  In addition,
+the examples directory contains scripts that demonstrate basic usage
+of the module.
+
+For more information, please visit
+
+  http://o2s.csail.mit.edu/o2s-wiki/pybonjour

@@ -1,0 +1,26 @@
+Metadata-Version: 1.0
+Name: pybonjour
+Version: 1.1.1
+Summary: Pure-Python interface to Apple Bonjour and compatible DNS-SD libraries
+Home-page: http://o2s.csail.mit.edu/o2s-wiki/pybonjour
+Author: Christopher Stawarz
+Author-email: cstawarz@csail.mit.edu
+License: UNKNOWN
+Download-URL: http://o2s.csail.mit.edu/download/pybonjour/
+Description: pybonjour provides a pure-Python interface (via ctypes) to Apple
+        Bonjour and compatible DNS-SD libraries (such as Avahi).  It allows
+        Python scripts to take advantage of Zero Configuration Networking
+        (Zeroconf) to register, discover, and resolve services on both local
+        and wide-area networks.  Since pybonjour is implemented in pure
+        Python, scripts that use it can easily be ported to Mac OS X, Windows,
+        Linux, and other systems that run Bonjour.
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: POSIX
+Classifier: Programming Language :: Python
+Classifier: Topic :: System :: Distributed Computing
+Classifier: Topic :: System :: Networking
