@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import sys
 import os
 import wx
 import wx.lib.newevent
@@ -12,15 +13,28 @@ import subprocess
 import shlex
 from argparse import ArgumentParser, SUPPRESS
 from ConfigParser import ConfigParser
+from select import select
+if os.path.exists('lib'):
+    sys.path.append('lib')
 from log import LoggingConfiguration
 from command import Command
 
 SomeNewEvent, EVT_SOME_NEW_EVENT = wx.lib.newevent.NewEvent()
 
+LINUX, WINDOWS = 0, 1
+
+
+def os_id():
+    if sys.platform.find('linux') >= 0:
+        return LINUX
+    return WINDOWS
+
 
 class UiAdvanced(wx.Frame):
     def __init__(self, parent, title, core):
-        super(UiAdvanced, self).__init__(parent, title=title)
+        super(UiAdvanced, self).__init__(parent, title=title,
+                                         size=wx.DefaultSize,
+                                         style=wx.DEFAULT_FRAME_STYLE)
 
         self._core = core
         self._core.register_listener(self)
@@ -32,13 +46,21 @@ class UiAdvanced(wx.Frame):
         self.InitUI()
         self.ConfigLoad()
         self.Centre()
-        self.Layout()
-        self.Fit()
         self.Show()
 
     def ConfigLoad(self):
         config = ConfigParser()
-        config.read('default.ini')
+        filepath = os.path.join(wx.StandardPaths_Get().GetUserConfigDir(),
+                                '.desktop-mirror', 'default.ini')
+        if not os.path.exists(filepath):
+            if os.path.exists(os.path.join('share', 'default.ini')):
+                filepath = os.path.join('share', 'default.ini')
+            elif os_id() == LINUX:
+                filepath = '/usr/share/desktop-mirror/default.ini'
+            else:
+                filepath = os.path.join(wx.StandardPaths_Get().GetInstallPrefix(),
+                                        'share', 'default.ini')
+        config.read(filepath)
         if not config.has_section('input'):
             config.add_section('input')
         else:
@@ -51,7 +73,11 @@ class UiAdvanced(wx.Frame):
         config = self.config
         for w in self._input:
             config.set('input', w, self._input[w].GetValue())
-        with open('default.ini', 'w') as configfile:
+        filepath = os.path.join(wx.StandardPaths_Get().GetUserConfigDir(),
+                                '.desktop-mirror', 'default.ini')
+        if not os.path.exists(os.path.dirname(filepath)):
+            os.mkdir(os.path.dirname(filepath))
+        with open(filepath, 'w') as configfile:
             config.write(configfile)
 
     def handler(self, evt):
@@ -195,7 +221,7 @@ class UiAdvanced(wx.Frame):
             boxsizer.Add(fgs, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
             return boxsizer
 
-        panel = self
+        panel = wx.Panel(self, -1)
         vbox = wx.BoxSizer(wx.VERTICAL)
 
         flags = wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT
@@ -208,6 +234,9 @@ class UiAdvanced(wx.Frame):
 
         panel.SetAutoLayout(True)
         panel.SetSizer(vbox)
+        panel.Layout()
+        panel.Fit()
+        self.Fit()
 
     def OnCloseWindow(self, event):
         self.ConfigSave()
@@ -269,7 +298,8 @@ class Core(Thread):
         self._extra_args = extra_args
         self._threads = []
         self._listener = []
-        signal.signal(signal.SIGCHLD, self.signal_handler)
+        if os_id() == LINUX:
+            signal.signal(signal.SIGCHLD, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
 
     def register_listener(self, ui_window):
@@ -340,8 +370,9 @@ class Core(Thread):
         logging.info('signal: ' + str(signum))
         if signal.SIGTERM == signum:
             self.send_form_destroy()
-        elif signal.SIGCHLD == signum:
-            os.waitpid(-1, os.WNOHANG)
+        if os_id == LINUX:
+            if signal.SIGCHLD == signum:
+                os.waitpid(-1, os.WNOHANG)
 
 
 class StreamServer(Thread):
@@ -350,29 +381,44 @@ class StreamServer(Thread):
         self._args = args
 
     def run(self):
-        logging.debug('args: {}'.format(self._args))
-        params = (self._args['video_input'] +
+        args = self._args
+        logging.debug('args: {}'.format(args))
+        params = (args['video_input'] +
                   ' {video_output}'
-                  ' tcp://127.0.0.1:12345?listen'
-                  ).format(video_input=self._args['video_input'],
-                           video_output=self._args['video_output'],
-                           x=self._args['x'],
-                           y=self._args['y'],
-                           w=self._args['w'],
-                           h=self._args['h'])
-        cmdline = ['/home/u/src/desktop-mirror/desktop-mirror/ffmpeg'] + shlex.split(params)
+                  ' tcp://127.0.0.1:9999'
+                  ).format(video_input=args['video_input'],
+                           video_output=args['video_output'],
+                           audio_input=args['audio_input'],
+                           audio_output=args['audio_output'],
+                           x=args['x'],
+                           y=args['y'],
+                           w=args['w'],
+                           h=args['h'])
+        cmdline = ['ffmpeg'] + shlex.split(params)
         logging.info('StreamServer start: ' + ' '.join(cmdline))
         self.proc = subprocess.Popen(cmdline,
-                                     stdout=subprocess.PIPE)
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
         try:
-            while True:
-                self.proc.stdout.readline()
+            while self.proc.returncode is None:
+                readable, writable, exceptional = select([self.proc.stdout, self.proc.stderr], [], [])
+                if self.proc.stdout in readable:
+                    logging.debug('SS: OUT: ' + self.proc.stdout.readline().strip())
+                if self.proc.stderr in readable:
+                    logging.debug('SS: ERR: ' + self.proc.stderr.readline().strip())
+                self.proc.poll()
         except:
             pass
+        self.proc.wait()
 
     def stop(self):
         try:
             self.proc.kill()
+        except OSError:
+            # maybe already dead
+            pass
+        try:
+            self.join()
         except OSError:
             # maybe already dead
             pass
@@ -385,7 +431,11 @@ class SelectionArea(Thread):
         self._callback = callback
 
     def run(self):
-        cmd = Command('./xrectsel "%x %y %w %h"', True, True).run()
+        if os.path.isfile('xrectsel/xrectsel') and os.access('xrectsel/xrectsel', os.X_OK):
+            execution = 'xrectsel/xrectsel'
+        else:
+            execution = 'xrectsel'
+        cmd = Command(execution + ' "%x %y %w %h"', True, True).run()
         line = cmd.stdout.split()
         self._callback(line[0:4])
 
@@ -447,6 +497,9 @@ class AvahiBrowse(Thread):
     def stop(self):
         self.proc.kill()
         self._stoped = True
+        if hasattr(self, '_fire_timer') and self._fire_timer is not None:
+            self._fire_timer.cancel()
+        self.join()
 
     def fire_event(self, data):
         def callback(data):
@@ -477,7 +530,8 @@ class MyArgumentParser(object):
                                   'One of {0} or {1} (%(default)s by default)'
                                   .format(', '.join(log_levels[:-1]),
                                           log_levels[-1])))
-        parser.add_argument('--log-dir', dest='log_dir', default='/tmp/',
+        parser.add_argument('--log-dir', dest='log_dir',
+                            default=os.path.join(wx.StandardPaths_Get().GetTempDir()),
                             help=('Path to the directory to store log files'))
         parser.add_argument('-z', '--zsync-input', dest='zsync_file',
                             default=None,
@@ -505,11 +559,12 @@ class MyArgumentParser(object):
         # and the times it was repeated (repetitions)
         args.log_filename = os.path.join(args.log_dir,
                                          ('{0}.log'
-                                          .format(os.path.basename(__file__))))
+                                          .format('desktop-mirror')))
         return args, extra_args
 
 
 def main():
+    app = wx.App(redirect=False)
     args, extra_args = MyArgumentParser().parse()
 
     LoggingConfiguration.set(args.log_level, args.log_filename, args.append)
@@ -519,7 +574,6 @@ def main():
     core = Core(args, extra_args)
     try:
         core.start()
-        app = wx.App()
         UiAdvanced(None, title="Desktop Mirror - Advanced", core=core)
         app.MainLoop()
     except KeyboardInterrupt:
