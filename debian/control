@@ -1,0 +1,21 @@
+Source: desktop-mirror
+Section: python
+Vcs-Git: https://github.com/fcwu/desktop-mirror
+Vcs-Browser: https://github.com/fcwu/desktop-mirror
+Priority: extra
+Build-Depends: cdbs (>= 0.4.43),
+ debhelper (>= 6),
+ python,
+ libx11-dev
+Maintainer: Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>
+Standards-Version: 3.9.3
+
+Package: desktop-mirror
+Architecture: all
+Depends: python (<< 3.0), python (>= 2.6),
+ python-distutils-extra,
+ libnotify-bin,
+ ffmpeg (>= 6:0.8.7-1ubuntu1dm1),
+ python-wxgtk2.8,
+Description: IBS command line interface
+ UNKNOWN

@@ -1,0 +1,3 @@
+bin/* /usr/bin/
+lib/* /usr/lib/desktop-mirror/
+share/* /usr/share/desktop-mirror

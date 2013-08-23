@@ -1,0 +1,10 @@
+Format-Specification: http://wiki.debian.org/Proposals/CopyrightFormat
+Upstream-Name: ibs-cli
+Upstream-Maintainer: Doro Wu <doro.wu@canonical.com>
+Upstream-Source: UNKNOWN
+
+Files: *
+Copyright: (C) 2013 Doro Wu <doro.wu@canonical.com>
+License: GPL-3
+ The full text of the GPL is distributed in
+ /usr/share/common-licenses/GPL-3 on Debian systems.
