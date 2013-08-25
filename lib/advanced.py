@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys
 import os
 import wx
 import wx.lib.newevent
-from threading import Thread, Lock, Timer
+from threading import Thread, Lock
 import signal
 import logging
 import logging.handlers
@@ -14,20 +13,15 @@ import shlex
 from argparse import ArgumentParser, SUPPRESS
 from ConfigParser import ConfigParser
 from select import select
-if os.path.exists('lib'):
-    sys.path.append('lib')
+
+# local libraries
+APPNAME = 'desktop-mirror'
 from log import LoggingConfiguration
 from command import Command
+from crossplatform import CrossPlatform
+from avahiservice import AvahiService
 
 SomeNewEvent, EVT_SOME_NEW_EVENT = wx.lib.newevent.NewEvent()
-
-LINUX, WINDOWS = 0, 1
-
-
-def os_id():
-    if sys.platform.find('linux') >= 0:
-        return LINUX
-    return WINDOWS
 
 
 class UiAdvanced(wx.Frame):
@@ -49,17 +43,11 @@ class UiAdvanced(wx.Frame):
         self.Show()
 
     def ConfigLoad(self):
-        config = ConfigParser()
-        filepath = os.path.join(wx.StandardPaths_Get().GetUserConfigDir(),
-                                '.desktop-mirror', 'default.ini')
+        filepath = CrossPlatform.get().user_config_path('ui.ini')
         if not os.path.exists(filepath):
-            if os.path.exists(os.path.join('share', 'default.ini')):
-                filepath = os.path.join('share', 'default.ini')
-            elif os_id() == LINUX:
-                filepath = '/usr/share/desktop-mirror/default.ini'
-            else:
-                filepath = os.path.join(wx.StandardPaths_Get().GetInstallPrefix(),
-                                        'share', 'default.ini')
+            filepath = CrossPlatform.get().system_config_path()
+        logging.info('Loading config from ' + filepath)
+        config = ConfigParser()
         config.read(filepath)
         if not config.has_section('input'):
             config.add_section('input')
@@ -73,18 +61,21 @@ class UiAdvanced(wx.Frame):
         config = self.config
         for w in self._input:
             config.set('input', w, self._input[w].GetValue())
-        filepath = os.path.join(wx.StandardPaths_Get().GetUserConfigDir(),
-                                '.desktop-mirror', 'default.ini')
-        if not os.path.exists(os.path.dirname(filepath)):
-            os.mkdir(os.path.dirname(filepath))
+        filepath = CrossPlatform.get().user_config_path('ui.ini')
+        logging.info('Saving config to ' + filepath)
         with open(filepath, 'w') as configfile:
             config.write(configfile)
 
     def handler(self, evt):
         def avahi(data):
             self._input['address'].Clear()
-            for f in self._core.targets:
-                self._input['address'].Append(';'.join(f[2:5]))
+            targets = self._core.targets
+            widget = self._input['address']
+            for f in targets:
+                for service in targets[f]:
+                    widget.Append('{} - {} - {}'.format(service['host'],
+                                                        service['service'],
+                                                        service['port']))
 
         def selection(data):
             self._input['x'].SetValue(data[0])
@@ -298,7 +289,7 @@ class Core(Thread):
         self._extra_args = extra_args
         self._threads = []
         self._listener = []
-        if os_id() == LINUX:
+        if CrossPlatform.get().is_linux():
             signal.signal(signal.SIGCHLD, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
 
@@ -325,12 +316,12 @@ class Core(Thread):
     @property
     def targets(self):
         if not hasattr(self, '_avahi_browse'):
-            return []
+            return dict()
         return self._avahi_browse.targets
 
     def run(self):
-        self._avahi_browse = AvahiBrowse(lambda data:
-                                         self.process_event('avahi', data))
+        self._avahi_browse = AvahiService(lambda data:
+                                          self.process_event('avahi', data))
         self._threads.append(self._avahi_browse)
 
         for thread in self._threads:
@@ -370,9 +361,12 @@ class Core(Thread):
         logging.info('signal: ' + str(signum))
         if signal.SIGTERM == signum:
             self.send_form_destroy()
-        if os_id == LINUX:
-            if signal.SIGCHLD == signum:
-                os.waitpid(-1, os.WNOHANG)
+        try:
+            if CrossPlatform.get().is_linux():
+                if signal.SIGCHLD == signum:
+                    os.waitpid(-1, os.WNOHANG)
+        except OSError:
+            pass
 
 
 class StreamServer(Thread):
@@ -400,12 +394,13 @@ class StreamServer(Thread):
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE)
         try:
+            stdout, stderr = self.proc.stdout, self.proc.stderr
             while self.proc.returncode is None:
-                readable, writable, exceptional = select([self.proc.stdout, self.proc.stderr], [], [])
-                if self.proc.stdout in readable:
-                    logging.debug('SS: OUT: ' + self.proc.stdout.readline().strip())
-                if self.proc.stderr in readable:
-                    logging.debug('SS: ERR: ' + self.proc.stderr.readline().strip())
+                R, W, E = select([stdout, stderr], [], [])
+                if stdout in R:
+                    logging.debug('SS: OUT: ' + stdout.readline().strip())
+                if stderr in R:
+                    logging.debug('SS: ERR: ' + stderr.readline().strip())
                 self.proc.poll()
         except:
             pass
@@ -431,84 +426,14 @@ class SelectionArea(Thread):
         self._callback = callback
 
     def run(self):
-        if os.path.isfile('xrectsel/xrectsel') and os.access('xrectsel/xrectsel', os.X_OK):
+        if os.path.isfile('xrectsel/xrectsel') and \
+           os.access('xrectsel/xrectsel', os.X_OK):
             execution = 'xrectsel/xrectsel'
         else:
             execution = 'xrectsel'
         cmd = Command(execution + ' "%x %y %w %h"', True, True).run()
         line = cmd.stdout.split()
         self._callback(line[0:4])
-
-
-class AvahiBrowse(Thread):
-    def __init__(self, callback):
-        Thread.__init__(self)
-        self._callback = callback
-        self._stoped = True
-        self._targets = []
-
-    @classmethod
-    def query_targets(cls):
-        cmd = Command('avahi-browse -arckp', True, True).run()
-        targets = []
-        for line in cmd.stdout.split('\n'):
-            fields = [cls.hostname_decode(f) for f in line.split(';')[1:]]
-            if len(fields) >= 8:
-                targets.append(fields)
-        #logging.debug('query_targets: {0}'.format(targets))
-        return targets
-
-    @classmethod
-    def hostname_decode(cls, raw):
-        output = ''
-        i, max = 0, len(raw)
-        while i < max:
-            if raw[i] != '\\':
-                output += raw[i]
-                i += 1
-            else:
-                tmp = ' '
-                try:
-                    tmp = chr(int(raw[i + 1:i + 4]))
-                except ValueError:
-                    pass
-                output += tmp
-                i += 4
-        return output
-
-    @property
-    def targets(self):
-        return self._targets
-
-    def run(self):
-        self._stoped = False
-        self.proc = subprocess.Popen(['avahi-browse', '-akp'],
-                                     stdout=subprocess.PIPE)
-        while not self._stoped:
-            line = self.proc.stdout.readline()
-            if line == '':
-                break
-            fields = [self.__class__.hostname_decode(f)
-                      for f in line.rstrip().split(';')]
-            self.fire_event(fields)
-        self.proc.kill()
-        self._stoped = True
-
-    def stop(self):
-        self.proc.kill()
-        self._stoped = True
-        if hasattr(self, '_fire_timer') and self._fire_timer is not None:
-            self._fire_timer.cancel()
-        self.join()
-
-    def fire_event(self, data):
-        def callback(data):
-            self._targets = self.__class__.query_targets()
-            self._callback(data)
-        if hasattr(self, '_fire_timer') and self._fire_timer is not None:
-            self._fire_timer.cancel()
-        self._fire_timer = Timer(1.0, lambda: callback(data))
-        self._fire_timer.start()
 
 
 class MyArgumentParser(object):
@@ -531,15 +456,12 @@ class MyArgumentParser(object):
                                   .format(', '.join(log_levels[:-1]),
                                           log_levels[-1])))
         parser.add_argument('--log-dir', dest='log_dir',
-                            default=os.path.join(wx.StandardPaths_Get().GetTempDir()),
+                            default=os.path.join(wx.StandardPaths_Get().
+                                                 GetTempDir()),
                             help=('Path to the directory to store log files'))
         parser.add_argument('-z', '--zsync-input', dest='zsync_file',
                             default=None,
                             help=('file path of zsync input path'))
-        parser.add_argument('--config-dir', dest='config_dir',
-                            default=os.path.join(wx.StandardPaths_Get().GetUserConfigDir(),
-                                                 '.config', 'desktop-mirror'),
-                            help=SUPPRESS)
         parser.add_argument('-g', '--osd', action='store_true', dest="osd",
                             default=False,
                             help=('show OSD notify during monitor'))
@@ -559,12 +481,13 @@ class MyArgumentParser(object):
         # and the times it was repeated (repetitions)
         args.log_filename = os.path.join(args.log_dir,
                                          ('{0}.log'
-                                          .format('desktop-mirror')))
+                                          .format(APPNAME)))
         return args, extra_args
 
 
 def main():
     app = wx.App(redirect=False)
+    app.SetAppName(APPNAME)
     args, extra_args = MyArgumentParser().parse()
 
     LoggingConfiguration.set(args.log_level, args.log_filename, args.append)

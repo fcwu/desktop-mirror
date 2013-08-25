@@ -17,5 +17,6 @@ Depends: python (<< 3.0), python (>= 2.6),
  libnotify-bin,
  ffmpeg (>= 6:0.8.7-1ubuntu1dm1),
  python-wxgtk2.8,
+ libavahi-compat-libdnssd1
 Description: IBS command line interface
  UNKNOWN
