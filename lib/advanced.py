@@ -7,19 +7,16 @@ import wx.lib.newevent
 from threading import Thread, Lock
 import signal
 import logging
-import logging.handlers
-import subprocess
-import shlex
 from argparse import ArgumentParser, SUPPRESS
 from ConfigParser import ConfigParser
-from select import select
 
 # local libraries
-APPNAME = 'desktop-mirror'
+from common import APPNAME
 from log import LoggingConfiguration
 from command import Command
 from crossplatform import CrossPlatform
 from avahiservice import AvahiService
+from streamserver import StreamServer
 
 SomeNewEvent, EVT_SOME_NEW_EVENT = wx.lib.newevent.NewEvent()
 
@@ -171,6 +168,7 @@ class UiAdvanced(wx.Frame):
             boxsizer.Add(hbox, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
 
             self.Bind(wx.EVT_BUTTON, self.OnClickSelectionArea, button1)
+            self.Bind(wx.EVT_BUTTON, self.OnClickFullScreen, button2)
 
             return boxsizer
 
@@ -269,6 +267,13 @@ class UiAdvanced(wx.Frame):
                                  h=inp['h'].GetValue())
         obj.SetLabel('Stop')
 
+    def OnClickFullScreen(self, evt):
+        geometry = wx.Display().GetGeometry()
+        self._input['x'].SetValue(str(geometry[0]))
+        self._input['y'].SetValue(str(geometry[1]))
+        self._input['w'].SetValue(str(geometry[2]))
+        self._input['h'].SetValue(str(geometry[3]))
+
 
 def sync(func):
     def wrapper(*args, **kv):
@@ -293,10 +298,6 @@ class Core(Thread):
             signal.signal(signal.SIGCHLD, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
 
-    def register_listener(self, ui_window):
-        if ui_window not in self._listener:
-            self._listener.append(ui_window)
-
     def is_streaming(self):
         if hasattr(self, '_stream_server') and self._stream_server is not None:
             return True
@@ -305,7 +306,8 @@ class Core(Thread):
     def stream_server_start(self, *args, **kargs):
         if self.is_streaming():
             return
-        self._stream_server = StreamServer(kargs)
+        self._stream_server = StreamServer(kargs, lambda data:
+                                           self.process_event('server', data))
         self._stream_server.start()
 
     def stream_server_stop(self):
@@ -338,6 +340,10 @@ class Core(Thread):
         SelectionArea(lambda data:
                       self.process_event('selection', data)).start()
 
+    def register_listener(self, ui_window):
+        if ui_window not in self._listener:
+            self._listener.append(ui_window)
+
     @sync
     def process_event(self, obj_id, data):
         def event_avahi(data):
@@ -350,8 +356,14 @@ class Core(Thread):
             for listener in self._listener:
                 wx.PostEvent(listener, evt)
 
+        def event_server(data):
+            evt = SomeNewEvent(attr1="server", attr2=data)
+            for listener in self._listener:
+                wx.PostEvent(listener, evt)
+
         dispatch_map = {'avahi': event_avahi,
-                        'selection': event_selection}
+                        'selection': event_selection,
+                        'server': event_server}
         if obj_id in dispatch_map:
             dispatch_map[obj_id](data)
             return
@@ -367,57 +379,6 @@ class Core(Thread):
                     os.waitpid(-1, os.WNOHANG)
         except OSError:
             pass
-
-
-class StreamServer(Thread):
-    def __init__(self, args):
-        Thread.__init__(self)
-        self._args = args
-
-    def run(self):
-        args = self._args
-        logging.debug('args: {}'.format(args))
-        params = (args['video_input'] +
-                  ' {video_output}'
-                  ' tcp://127.0.0.1:9999'
-                  ).format(video_input=args['video_input'],
-                           video_output=args['video_output'],
-                           audio_input=args['audio_input'],
-                           audio_output=args['audio_output'],
-                           x=args['x'],
-                           y=args['y'],
-                           w=args['w'],
-                           h=args['h'])
-        cmdline = ['ffmpeg'] + shlex.split(params)
-        logging.info('StreamServer start: ' + ' '.join(cmdline))
-        self.proc = subprocess.Popen(cmdline,
-                                     stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE)
-        try:
-            stdout, stderr = self.proc.stdout, self.proc.stderr
-            while self.proc.returncode is None:
-                R, W, E = select([stdout, stderr], [], [])
-                if stdout in R:
-                    logging.debug('SS: OUT: ' + stdout.readline().strip())
-                if stderr in R:
-                    logging.debug('SS: ERR: ' + stderr.readline().strip())
-                self.proc.poll()
-        except:
-            pass
-        self.proc.wait()
-
-    def stop(self):
-        try:
-            self.proc.kill()
-        except OSError:
-            # maybe already dead
-            pass
-        try:
-            self.join()
-        except OSError:
-            # maybe already dead
-            pass
-        logging.info('StreamServer stop')
 
 
 class SelectionArea(Thread):

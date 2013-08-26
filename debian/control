@@ -1,6 +1,6 @@
 Source: desktop-mirror
 Section: python
-Vcs-Git: https://github.com/fcwu/desktop-mirror
+Vcs-Git: git://github.com/fcwu/desktop-mirror
 Vcs-Browser: https://github.com/fcwu/desktop-mirror
 Priority: extra
 Build-Depends: cdbs (>= 0.4.43),
@@ -17,6 +17,7 @@ Depends: python (<< 3.0), python (>= 2.6),
  libnotify-bin,
  ffmpeg (>= 6:0.8.7-1ubuntu1dm1),
  python-wxgtk2.8,
- libavahi-compat-libdnssd1
+ libavahi-compat-libdnssd1,
+ crtmpserver (>=1.0~dfsg-4+svn789)
 Description: IBS command line interface
  UNKNOWN
