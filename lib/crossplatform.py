@@ -50,6 +50,8 @@ class CrossPlatformWindows(CrossPlatform):
                             'share', 'default.ini')
 
     def share_path(self, filename):
+        if os.path.exists('share'):
+            return os.path.join('share', filename)
         return os.path.join(wx.StandardPaths_Get().GetInstallPrefix(),
                             'share', filename)
 
@@ -62,4 +64,6 @@ class CrossPlatformUbuntu(CrossPlatform):
         return '/usr/share/' + APPNAME + '/default.ini'
 
     def share_path(self, filename):
+        if os.path.exists('share'):
+            return os.path.join('share', filename)
         return '/usr/share/' + APPNAME + '/' + filename

@@ -14,7 +14,7 @@ configuration=
 	
 	applications=
 	{
-		rootDirectory="applications",
+		rootDirectory="/usr/lib/crtmpserver/applications",
 		{
 			description="FLV Playback Sample",
 			name="flvplayback",
@@ -38,7 +38,7 @@ configuration=
                     localStreamName="tcpchan4"
 				},
 				{
-					ip="0.0.0.0",
+					ip="127.0.0.1",
 					port=9999,
 					--protocol="inboundTcpTs",--
 					protocol="inboundLiveFlv",

@@ -80,8 +80,15 @@ class UiAdvanced(wx.Frame):
             self._input['w'].SetValue(data[2])
             self._input['h'].SetValue(data[3])
 
+        def server(data):
+            status_str = {StreamServer.S_STOPPED: 'Stopped',
+                          StreamServer.S_STARTING: 'Start...',
+                          StreamServer.S_STARTED: 'Started',
+                          StreamServer.S_STOPPING: 'Stop...'}
+            self.statusbar.SetStatusText(status_str[data])
+
         logging.debug('UI event {0}: {1}'.format(evt.attr1, evt.attr2))
-        dispatch = {'avahi': avahi, 'selection': selection}
+        dispatch = {'avahi': avahi, 'selection': selection, 'server': server}
         if evt.attr1 in dispatch:
             dispatch[evt.attr1](evt.attr2)
 
@@ -220,6 +227,8 @@ class UiAdvanced(wx.Frame):
         vbox.Add(videoBox(), 0, flag=flags, border=10)
         vbox.Add(audioBox(), 0, flag=flags, border=10)
         vbox.AddSpacer(10)
+
+        self.statusbar = self.CreateStatusBar()
 
         panel.SetAutoLayout(True)
         panel.SetSizer(vbox)
@@ -360,6 +369,11 @@ class Core(Thread):
             evt = SomeNewEvent(attr1="server", attr2=data)
             for listener in self._listener:
                 wx.PostEvent(listener, evt)
+            if data == StreamServer.S_STARTED:
+                logging.info('Got streaming url: {}'.format(self._stream_server.url))
+                #s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                #s.connect(('google.com', 0))
+                #s.getsockname()[0]
 
         dispatch_map = {'avahi': event_avahi,
                         'selection': event_selection,

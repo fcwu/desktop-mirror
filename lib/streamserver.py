@@ -9,6 +9,10 @@ from select import select
 from crossplatform import CrossPlatform
 
 
+class StreamIsNotAvailable(Exception):
+    pass
+
+
 class StreamServer(Thread):
     S_STOPPED = 0
     S_STARTING = 1
@@ -19,13 +23,16 @@ class StreamServer(Thread):
         Thread.__init__(self)
         self._args = args
         self._callback = callback
+        self._status = self.S_STOPPED
 
     def prepare_ffmpeg_process(self):
         args = self._args
         logging.debug('args: {}'.format(args))
         params = (args['video_input'] +
+                  ' {audio_input}'
                   ' {video_output}'
-                  ' tcp://127.0.0.1:9999'
+                  ' {audio_output}'
+                  ' -map 0 -map 1 -f flv tcp://127.0.0.1:9999'
                   ).format(video_input=args['video_input'],
                            video_output=args['video_output'],
                            audio_input=args['audio_input'],
@@ -43,7 +50,7 @@ class StreamServer(Thread):
     def prepare_server_process(self):
         args = self._args
         logging.debug('args: {}'.format(args))
-        params = (CrossPlatform.get().share_path('crtmpserver.lua'),)
+        params = (CrossPlatform.get().share_path('crtmpserver.lua'))
         cmdline = ['crtmpserver'] + shlex.split(params)
         logging.info('stream server start: ' + ' '.join(cmdline))
         return subprocess.Popen(cmdline,
@@ -51,30 +58,51 @@ class StreamServer(Thread):
                                 stderr=subprocess.PIPE)
 
     def run(self):
-        self._callback(self.S_STARTING)
+        def ffmpeg_process(fd):
+            if fd not in (self.p_ffmpeg.stdout, self.p_ffmpeg.stderr):
+                return
+            logging.debug('FFMPEG: ' + fd.readline().strip())
+
+        def server_process(fd):
+            if fd not in (self.p_server.stdout, self.p_server.stderr):
+                return
+            line = fd.readline().strip()
+            logging.debug('SERVER: ' + line)
+            if hasattr(self, '_url'):
+                return
+            index = line.find('Stream INLFLV(1) with name')
+            if index < 0:
+                return
+            fields = line[index:].split('`', 2)
+            if len(fields) != 3:
+                logging.debug('server_process fields counts != 3: ' + str(fields))
+                return
+            self._url = "rtmp://{ip}:1936/flvplayback/" + fields[1]
+            self.status = self.S_STARTED
+
+        self.status = self.S_STARTING
         self.p_server = self.prepare_server_process()
         self.p_ffmpeg = self.prepare_ffmpeg_process()
         procs = (self.p_ffmpeg, self.p_server)
         logging.info('StreamServer Start')
-        self._callback(self.S_STARTED)
         try:
             inputs = []
             for p in procs:
                 inputs.extend((p.stdout, p.stderr))
-            while self.p_ffmpeg.returncode is None:
+            go = True
+            while True:
                 R, W, E = select(inputs, [], [])
-                for p in procs:
+                for i, p in enumerate(procs):
                     p.poll()
                     if p.returncode is not None:
+                        logging.info('{} dead'.format(i))
+                        go = False
                         break
+                if not go:
+                    break
                 for fd in R:
-                    prefix = ''
-                    if fd in (self.p_ffmpeg.stdout, self.p_ffmpeg.stderr):
-                        prefix = 'FFMPEG: '
-                    if fd in (self.p_server.stdout, self.p_server.stderr):
-                        prefix = 'SERVER: '
-                    logging.debug(prefix + fd.readline().strip())
-                    logging.debug(prefix + fd.readline().strip())
+                    ffmpeg_process(fd)
+                    server_process(fd)
         except:
             pass
         self.stop()
@@ -91,7 +119,27 @@ class StreamServer(Thread):
             except OSError:
                 # maybe already recycled
                 pass
-        self._callback(self.S_STOPPING)
+        self.status = self.S_STOPPING
         map(kill_and_wait, (self.p_ffmpeg, self.p_server))
         logging.info('StreamServer stop')
-        self._callback(self.S_STOPPED)
+        self.status = self.S_STOPPED
+
+    @property
+    def url(self):
+        if not hasattr(self, '_url'):
+            raise StreamIsNotAvailable
+        return self._url
+
+    @property
+    def status(self):
+        return self._status
+
+    @status.setter
+    def status(self, status):
+        if self._status == status:
+            return
+        self._status = status
+        try:
+            self._callback(self._status)
+        except:
+            pass
