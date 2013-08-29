@@ -39,7 +39,7 @@ configuration=
 				},
 				{
 					ip="127.0.0.1",
-					port=9999,
+					port=47768,
 					--protocol="inboundTcpTs",--
 					protocol="inboundLiveFlv",
                     localStreamName="tcpchan5"

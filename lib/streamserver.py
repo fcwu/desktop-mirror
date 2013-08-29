@@ -7,6 +7,7 @@ import shlex
 from subprocess import Popen, PIPE
 from select import select
 from crossplatform import CrossPlatform
+from common import DEFAULT_PORT
 
 
 class StreamIsNotAvailable(Exception):
@@ -65,7 +66,8 @@ class FfmpegProcess(Process):
                   ' {audio_input}'
                   ' {video_output}'
                   ' {audio_output}'
-                  ' -map 0 -map 1 -f flv tcp://127.0.0.1:9999'
+                  ' -map 0 -map 1 '
+                  '-f flv tcp://127.0.0.1:' + str(DEFAULT_PORT + 1)
                   ).format(video_input=args['video_input'],
                            video_output=args['video_output'],
                            audio_input=args['audio_input'],

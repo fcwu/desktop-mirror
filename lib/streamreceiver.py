@@ -5,6 +5,7 @@ import logging
 import BaseHTTPServer
 import simplejson
 from threading import Thread
+from common import DEFAULT_PORT
 
 
 class HttpHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -45,7 +46,7 @@ class StreamReceiver(Thread):
 
     def run(self):
         logging.info('StreamReceiver started')
-        self.httpd = BaseHTTPServer.HTTPServer(('0.0.0.0', 47767), HttpHandler)
+        self.httpd = BaseHTTPServer.HTTPServer(('0.0.0.0', DEFAULT_PORT), HttpHandler)
         self.httpd.callback = self.callback
         try:
             self.httpd.serve_forever()

@@ -7,6 +7,7 @@ import platform
 import socket
 from select import select
 from threading import Thread, Timer, Lock
+from common import DEFAULT_PORT
 
 # local libraries
 import pybonjour as pb
@@ -113,7 +114,7 @@ class AvahiService(Thread):
 
         fullname = '{}.{}{}'.format(serviceName, regtype, replyDomain)
         if not (flags & pb.kDNSServiceFlagsAdd):
-            self.removed_callback()
+            self.removed_callback(fullname)
             return
 
         logging.debug('Service added {}; resolving'.format(fullname))
@@ -145,7 +146,7 @@ class AvahiService(Thread):
         self._stoped = False
         logging.info('AvahiService started')
 
-        self.register_service(platform.node(), '_desktop-mirror._tcp', 47767)
+        self.register_service(platform.node(), '_desktop-mirror._tcp', DEFAULT_PORT)
         self.listen_browse(('_xbmc-jsonrpc._tcp', '_asustor-boxee._tcp',
                             '_desktop-mirror._tcp'), self.browse_callback)
         logging.info('AvahiService stoped')

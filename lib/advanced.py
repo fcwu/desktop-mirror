@@ -19,6 +19,7 @@ import re
 
 # local libraries
 from common import APPNAME
+from common import DEFAULT_PORT
 from log import LoggingConfiguration
 from command import Command
 from crossplatform import CrossPlatform
@@ -300,7 +301,7 @@ class UiAdvanced(wx.Frame):
             m = re.search('^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d{1,5})?$',
                           hostname)
             if target is None and m is not None:
-                port = 47767 if m.group(2) is None else m.group(2)
+                port = DEFAULT_PORT + 1 if m.group(2) is None else m.group(2)
                 return {'ip': m.group(1), 'port': port,
                         'service': 'desktop-mirror'}
             for i in xrange(0, cb.GetCount()):
@@ -355,7 +356,7 @@ class UiAdvanced(wx.Frame):
             #128));
             self._input_stream.Enable(False)
         else:
-            port = 47767 if m.group(2) is None else m.group(2)
+            port = DEFAULT_PORT + 1 if m.group(2) is None else m.group(2)
             self._target = {'ip': m.group(1), 'port': port,
                             'service': 'desktop-mirror'}
             self._input_stream.Enable(True)
