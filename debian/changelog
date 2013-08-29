@@ -1,3 +1,9 @@
+desktop-mirror (0.2) unstable; urgency=low
+
+  * Linux to Linux can stream each other
+
+ -- Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>  Thu, 29 Aug 2013 17:44:34 +0800
+
 desktop-mirror (0.1) unstable; urgency=low
 
   * Initial Debian release

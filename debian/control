@@ -3,21 +3,23 @@ Section: python
 Vcs-Git: git://github.com/fcwu/desktop-mirror
 Vcs-Browser: https://github.com/fcwu/desktop-mirror
 Priority: extra
-Build-Depends: cdbs (>= 0.4.43),
- debhelper (>= 6),
+Build-Depends: debhelper (>= 6),
  python,
  libx11-dev
 Maintainer: Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>
 Standards-Version: 3.9.3
 
 Package: desktop-mirror
-Architecture: all
+Architecture: any
 Depends: python (<< 3.0), python (>= 2.6),
+ ${misc:Depends},
+ ${shlibs:Depends},
  python-distutils-extra,
  libnotify-bin,
  ffmpeg (>= 6:0.8.7-1ubuntu1dm1),
  python-wxgtk2.8,
+ libx11-6,
  libavahi-compat-libdnssd1,
- crtmpserver (>=1.0~dfsg-4+svn789)
-Description: IBS command line interface
+ crtmpserver (>> 1.0~dfsg-4+svn788)
+Description: A tools to stream screen(video and audio) out
  UNKNOWN

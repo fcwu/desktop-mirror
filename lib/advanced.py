@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import sys
 import os
 import wx
 import wx.lib.newevent
@@ -9,6 +10,12 @@ import signal
 import logging
 from argparse import ArgumentParser, SUPPRESS
 from ConfigParser import ConfigParser
+from subprocess import Popen
+# CoreEventHandler
+import socket
+import urllib2
+import json
+import re
 
 # local libraries
 from common import APPNAME
@@ -17,6 +24,7 @@ from command import Command
 from crossplatform import CrossPlatform
 from avahiservice import AvahiService
 from streamserver import StreamServer
+from streamreceiver import StreamReceiver
 
 SomeNewEvent, EVT_SOME_NEW_EVENT = wx.lib.newevent.NewEvent()
 
@@ -63,32 +71,79 @@ class UiAdvanced(wx.Frame):
         with open(filepath, 'w') as configfile:
             config.write(configfile)
 
+    def OnAvahi(self, data):
+        self._input['address'].Clear()
+        hosts = self._core.hosts
+        unique = []
+        targets = self._core.targets
+        widget = self._input['address']
+        for f in targets:
+            for service in targets[f]:
+                key = service['host']
+                if key in unique:
+                    continue
+                unique.append(key)
+                t = {'host': service['host'],
+                     'service': service['service'],
+                     'port': service['port'],
+                     'ip': hosts[service['host']][0]}
+                logging.debug('Adding one {}'.format(t))
+                widget.Append('{} - {}:{}'.format(t['host'],
+                                                  t['ip'],
+                                                  t['port']))
+                widget.SetClientData(widget.GetCount() - 1, t)
+
+    def OnSelection(self, data):
+        self._input['x'].SetValue(data[0])
+        self._input['y'].SetValue(data[1])
+        self._input['w'].SetValue(data[2])
+        self._input['h'].SetValue(data[3])
+
+    def OnStreamServer(self, data):
+        status_str = {StreamServer.S_STOPPED: 'Stopped',
+                      StreamServer.S_STARTING: 'Start...',
+                      StreamServer.S_STARTED: 'Started',
+                      StreamServer.S_STOPPING: 'Stop...'}
+        self.statusbar.SetStatusText(status_str[data])
+        if StreamServer.S_STARTED != data:
+            return
+        try:
+            self._core.playme(self._target['ip'],
+                              self._target['port'],
+                              self._target['service'])
+        except OSError:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)
+            logging.warn('{} {} {}'.format(exc_type,
+                                           fname[1],
+                                           exc_tb.tb_lineno))
+            msg = ('Connection Error\n'
+                   ' - IP: {}\n'
+                   ' - Port: {}\n'
+                   ' - Service: {}').format(self._target['ip'],
+                                            self._target['port'],
+                                            self._target['service'])
+            wx.MessageBox(msg, APPNAME,
+                          style=wx.OK | wx.CENTRE | wx.ICON_ERROR)
+
+    def OnStreamReceiver(self, data):
+        if data[0] != StreamReceiver.EVENT_ASK_TO_PLAY:
+            logging.warn('Unknown event: {}'.format(data))
+            return
+        dlg = wx.MessageDialog(self,
+                               ('Stream Request. Accept?'),
+                               APPNAME,
+                               wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
+        if dlg.ShowModal() == wx.ID_YES:
+            cmdline = ['ffplay', data[1]]
+            Popen(cmdline)
+
     def handler(self, evt):
-        def avahi(data):
-            self._input['address'].Clear()
-            targets = self._core.targets
-            widget = self._input['address']
-            for f in targets:
-                for service in targets[f]:
-                    widget.Append('{} - {} - {}'.format(service['host'],
-                                                        service['service'],
-                                                        service['port']))
-
-        def selection(data):
-            self._input['x'].SetValue(data[0])
-            self._input['y'].SetValue(data[1])
-            self._input['w'].SetValue(data[2])
-            self._input['h'].SetValue(data[3])
-
-        def server(data):
-            status_str = {StreamServer.S_STOPPED: 'Stopped',
-                          StreamServer.S_STARTING: 'Start...',
-                          StreamServer.S_STARTED: 'Started',
-                          StreamServer.S_STOPPING: 'Stop...'}
-            self.statusbar.SetStatusText(status_str[data])
-
         logging.debug('UI event {0}: {1}'.format(evt.attr1, evt.attr2))
-        dispatch = {'avahi': avahi, 'selection': selection, 'server': server}
+        dispatch = {'avahi': self.OnAvahi,
+                    'selection': self.OnSelection,
+                    'server': self.OnStreamServer,
+                    'srx': self.OnStreamReceiver}
         if evt.attr1 in dispatch:
             dispatch[evt.attr1](evt.attr2)
 
@@ -111,7 +166,7 @@ class UiAdvanced(wx.Frame):
             hbox = wx.BoxSizer(wx.HORIZONTAL)
             hbox.Add(wx.StaticText(panel, label="Target"), flag=wx.ALL,
                      border=15)
-            cb = wx.ComboBox(panel, 500, "127.0.0.1:12345",
+            cb = wx.ComboBox(panel, 500, "127.0.0.1",
                              style=wx.CB_DROPDOWN | wx.TE_PROCESS_ENTER
                              )
             button1 = wx.Button(panel, label="Streaming")
@@ -120,6 +175,7 @@ class UiAdvanced(wx.Frame):
             hbox.Add(button1, 0, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT,
                      border=15)
             self._input['address'] = cb
+            self._input_stream = button1
 
             self.Bind(wx.EVT_COMBOBOX, self.OnTargetChosen, cb)
             self.Bind(wx.EVT_TEXT, self.OnTargetKey, cb)
@@ -236,6 +292,44 @@ class UiAdvanced(wx.Frame):
         panel.Fit()
         self.Fit()
 
+    def StartStreamServer(self):
+        def guess_target():
+            target = None
+            cb = self._input['address']
+            hostname = cb.GetValue()
+            m = re.search('^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d{1,5})?$',
+                          hostname)
+            if target is None and m is not None:
+                port = 47767 if m.group(2) is None else m.group(2)
+                return {'ip': m.group(1), 'port': port,
+                        'service': 'desktop-mirror'}
+            for i in xrange(0, cb.GetCount()):
+                if hostname != cb.GetString(i):
+                    continue
+                data = cb.GetClientData(i)
+                return {'ip': data['ip'],
+                        'port': data['port'],
+                        'service': data['service']}
+            return target
+
+        core = self._core
+        if not hasattr(self, '_target') or self._target is None:
+            self._target = guess_target()
+        if self._target is None:
+            return False
+        inp = self._input
+        core.stream_server_start(video_input=inp['video_input'].GetValue(),
+                                 audio_input=inp['audio_input'].GetValue(),
+                                 video_output=inp['video_output'].GetValue(),
+                                 audio_output=inp['audio_output'].GetValue(),
+                                 x=inp['x'].GetValue(),
+                                 y=inp['y'].GetValue(),
+                                 w=inp['w'].GetValue(),
+                                 h=inp['h'].GetValue(),
+                                 ip=self._target['ip'],
+                                 port=self._target['port'])
+        return True
+
     def OnCloseWindow(self, event):
         self.ConfigSave()
         self.Destroy()
@@ -244,11 +338,27 @@ class UiAdvanced(wx.Frame):
     def OnTargetChosen(self, evt):
         cb = evt.GetEventObject()
         data = cb.GetClientData(evt.GetSelection())
+        self._target = {'ip': data['ip'], 'port': data['port'],
+                        'service': data['service']}
         logging.info('OnTargetChosen: {} ClientData: {}'.format(
                      evt.GetString(), data))
+        self._input_stream.Enable(True)
 
     def OnTargetKey(self, evt):
         logging.info('OnTargetKey: %s' % evt.GetString())
+        self._target = None
+        m = re.search('^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d{1,5})?$',
+                      evt.GetString())
+        if m is None:
+            ## Not available in 2.8
+            # evt.GetEventObject().SetBackgroundColour(wx.Colour(255, 0, 0,
+            #128));
+            self._input_stream.Enable(False)
+        else:
+            port = 47767 if m.group(2) is None else m.group(2)
+            self._target = {'ip': m.group(1), 'port': port,
+                            'service': 'desktop-mirror'}
+            self._input_stream.Enable(True)
         evt.Skip()
 
     def OnTargetKeyEnter(self, evt):
@@ -261,20 +371,17 @@ class UiAdvanced(wx.Frame):
     def OnClickStream(self, evt):
         core = self._core
         obj = evt.GetEventObject()
-        inp = self._input
         if core.is_streaming():
             core.stream_server_stop()
             obj.SetLabel('Stream')
             return
-        core.stream_server_start(video_input=inp['video_input'].GetValue(),
-                                 audio_input=inp['audio_input'].GetValue(),
-                                 video_output=inp['video_output'].GetValue(),
-                                 audio_output=inp['audio_output'].GetValue(),
-                                 x=inp['x'].GetValue(),
-                                 y=inp['y'].GetValue(),
-                                 w=inp['w'].GetValue(),
-                                 h=inp['h'].GetValue())
-        obj.SetLabel('Stop')
+        if self.StartStreamServer():
+            obj.SetLabel('Stop')
+        else:
+            cb = self._input['address']
+            wx.MessageBox('{} is down'.format(cb.GetValue()),
+                          APPNAME,
+                          style=wx.OK | wx.CENTRE | wx.ICON_ERROR)
 
     def OnClickFullScreen(self, evt):
         geometry = wx.Display().GetGeometry()
@@ -298,11 +405,10 @@ def sync(func):
 class Core(Thread):
     def __init__(self, args, extra_args):
         Thread.__init__(self)
-        self._lock = Lock()
         self._args = args
         self._extra_args = extra_args
         self._threads = []
-        self._listener = []
+        self._event_handler = CoreEventHandler()
         if CrossPlatform.get().is_linux():
             signal.signal(signal.SIGCHLD, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
@@ -315,8 +421,9 @@ class Core(Thread):
     def stream_server_start(self, *args, **kargs):
         if self.is_streaming():
             return
+        logging.info('StreamServer start: '.format(kargs))
         self._stream_server = StreamServer(kargs, lambda data:
-                                           self.process_event('server', data))
+                                           self.handler('server', data))
         self._stream_server.start()
 
     def stream_server_stop(self):
@@ -324,16 +431,49 @@ class Core(Thread):
             self._stream_server.stop()
             self._stream_server = None
 
+    def playme(self, remote_ip, remote_port, service):
+        def myip(remote_ip):
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect((remote_ip, 0))
+            return s.getsockname()[0]
+        logging.info('Got streaming url: {}'.
+                     format(self._stream_server.url))
+        stream_url = self._stream_server.url.format(ip=myip(remote_ip))
+        data_as_json = json.dumps({'method': 'Player.Open',
+                                   'id': 1,
+                                   'jsonrpc': '2.0',
+                                   'params': {'item': {'file': stream_url}}})
+        url = 'http://{}:{}/jsonrpc'.format(remote_ip, remote_port)
+        logging.debug('url = {}'.format(url))
+        logging.debug('  json = {}'.format(data_as_json))
+        req = urllib2.Request(url, data_as_json,
+                              {'Content-Type': 'application/json'})
+        response = urllib2.urlopen(req)
+        result = response.read()
+        logging.debug('result: {}'.format(result))
+        result = json.loads(result)
+        ##switch back to json with pretty format
+        logging.debug(json.dumps(result, indent=4))
+
     @property
     def targets(self):
         if not hasattr(self, '_avahi_browse'):
             return dict()
         return self._avahi_browse.targets
 
+    @property
+    def hosts(self):
+        if not hasattr(self, '_avahi_browse'):
+            return dict()
+        return self._avahi_browse.hosts
+
     def run(self):
         self._avahi_browse = AvahiService(lambda data:
-                                          self.process_event('avahi', data))
+                                          self.handler('avahi', data))
+        self._stream_recever = StreamReceiver(lambda data:
+                                              self.handler('srx', data))
         self._threads.append(self._avahi_browse)
+        self._threads.append(self._stream_recever)
 
         for thread in self._threads:
             thread.start()
@@ -342,46 +482,25 @@ class Core(Thread):
 
     def stop(self):
         for thread in self._threads:
+            logging.debug('Stopping thread - {}'.format(thread.name))
             thread.stop()
         self.stream_server_stop()
 
     def launch_selection_area_process(self):
         SelectionArea(lambda data:
-                      self.process_event('selection', data)).start()
+                      self.handler('selection', data)).start()
 
     def register_listener(self, ui_window):
-        if ui_window not in self._listener:
-            self._listener.append(ui_window)
+        self._event_handler.register_listener(ui_window)
 
-    @sync
-    def process_event(self, obj_id, data):
-        def event_avahi(data):
-            evt = SomeNewEvent(attr1="avahi", attr2=data)
-            for listener in self._listener:
-                wx.PostEvent(listener, evt)
+    def on_event_relay(self, event_name, data):
+        self._event_handler.on_event_relay(event_name, data)
 
-        def event_selection(data):
-            evt = SomeNewEvent(attr1="selection", attr2=data)
-            for listener in self._listener:
-                wx.PostEvent(listener, evt)
+    def on_event_stream_ready(self, event_name, data):
+        self._event_handler.on_event_stream_ready(event_name, data)
 
-        def event_server(data):
-            evt = SomeNewEvent(attr1="server", attr2=data)
-            for listener in self._listener:
-                wx.PostEvent(listener, evt)
-            if data == StreamServer.S_STARTED:
-                logging.info('Got streaming url: {}'.format(self._stream_server.url))
-                #s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                #s.connect(('google.com', 0))
-                #s.getsockname()[0]
-
-        dispatch_map = {'avahi': event_avahi,
-                        'selection': event_selection,
-                        'server': event_server}
-        if obj_id in dispatch_map:
-            dispatch_map[obj_id](data)
-            return
-        logging.error('event not process: ' + obj_id)
+    def handler(self, obj_id, data):
+        self._event_handler.handler(obj_id, data)
 
     def signal_handler(self, signum, frame):
         logging.info('signal: ' + str(signum))
@@ -393,6 +512,35 @@ class Core(Thread):
                     os.waitpid(-1, os.WNOHANG)
         except OSError:
             pass
+
+
+class CoreEventHandler(object):
+    def __init__(self):
+        self._lock = Lock()
+        self._listener = []
+
+    def register_listener(self, ui_window):
+        if ui_window not in self._listener:
+            self._listener.append(ui_window)
+
+    def on_event_relay(self, event_name, data):
+        evt = SomeNewEvent(attr1=event_name, attr2=data)
+        for listener in self._listener:
+            wx.PostEvent(listener, evt)
+
+    def on_event_stream_ready(self, event_name, data):
+        self.on_event_relay(event_name, data)
+
+    @sync
+    def handler(self, obj_id, data):
+        dispatch_map = {'avahi': self.on_event_relay,
+                        'selection': self.on_event_relay,
+                        'server': self.on_event_stream_ready,
+                        'srx': self.on_event_relay}
+        if obj_id in dispatch_map:
+            dispatch_map[obj_id](obj_id, data)
+            return
+        logging.error('event not process: ' + obj_id)
 
 
 class SelectionArea(Thread):

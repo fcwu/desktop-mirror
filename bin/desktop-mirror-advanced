@@ -6,4 +6,4 @@ if [ -x "./lib/advanced" ]; then
 else
     executable="/usr/lib/desktop-mirror/advanced.py"
 fi
-exec $executable
+exec $executable $*

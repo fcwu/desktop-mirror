@@ -20,8 +20,8 @@ ${OUT}: ${OBJ}
 strip: ${OUT}
 	strip --strip-all ${OUT}
 
-install: xrectsel
-	install -D -m755 xrectsel ${DESTDIR}${PREFIX}/bin/xrectsel
+install: xrectsel strip
+	install -D -m755 xrectsel ${DESTDIR}/bin/xrectsel
 
 uninstall:
 	@echo removing executable file from ${DESTDIR}${PREFIX}/bin

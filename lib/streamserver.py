@@ -3,14 +3,110 @@
 
 from threading import Thread
 import logging
-import subprocess
 import shlex
+from subprocess import Popen, PIPE
 from select import select
 from crossplatform import CrossPlatform
 
 
 class StreamIsNotAvailable(Exception):
     pass
+
+
+class Process(object):
+    def __init__(self, server, name):
+        self._server = server
+        if name is None:
+            name = 'Unknown'
+        self._name = name
+
+    def run(self, args):
+        cmdline = self.prepare(args)
+        logging.info(self._name + ' start: ' + ' '.join(cmdline))
+        p = Popen(cmdline, stdout=PIPE, stderr=PIPE)
+        self.p = p
+        return self
+
+    def output_fds(self):
+        return (self.p.stdout, self.p.stderr)
+
+    def kill_and_wait(self):
+        try:
+            self.p.kill()
+        except OSError:
+            # maybe already dead
+            pass
+        try:
+            self.p.wait()
+        except OSError:
+            # maybe already recycled
+            pass
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def returncode(self):
+        self.p.poll()
+        return self.p.returncode
+
+    def is_dead(self):
+        self.p.poll()
+        return self.p.returncode is not None
+
+
+class FfmpegProcess(Process):
+    def __init__(self, server):
+        super(FfmpegProcess, self).__init__(server, 'ffmpeg')
+
+    def prepare(self, args):
+        params = (args['video_input'] +
+                  ' {audio_input}'
+                  ' {video_output}'
+                  ' {audio_output}'
+                  ' -map 0 -map 1 -f flv tcp://127.0.0.1:9999'
+                  ).format(video_input=args['video_input'],
+                           video_output=args['video_output'],
+                           audio_input=args['audio_input'],
+                           audio_output=args['audio_output'],
+                           x=args['x'],
+                           y=args['y'],
+                           w=args['w'],
+                           h=args['h'])
+        return ['ffmpeg'] + shlex.split(params)
+
+    def process(self, fd):
+        if fd not in (self.p.stdout, self.p.stderr):
+            return
+        logging.debug(self._name + ': ' + fd.readline().strip())
+
+
+class ServerProcess(Process):
+    def __init__(self, server):
+        super(ServerProcess, self).__init__(server, 'server')
+
+    def prepare(self, args):
+        params = (CrossPlatform.get().share_path('crtmpserver.lua'))
+        return ['crtmpserver'] + shlex.split(params)
+
+    def process(self, fd):
+        if fd not in (self.p.stdout, self.p.stderr):
+            return
+        line = fd.readline().strip()
+        logging.debug('SERVER: ' + line)
+        if hasattr(self, '_url'):
+            return
+        index = line.find('Stream INLFLV(1) with name')
+        if index < 0:
+            return
+        fields = line[index:].split('`', 2)
+        if len(fields) != 3:
+            logging.debug('server_process fields counts != 3: {}'.
+                          format(fields))
+            return
+        self._server._url = "rtmp://{ip}:1936/flvplayback/" + fields[1]
+        self._server.status = self._server.S_STARTED
 
 
 class StreamServer(Thread):
@@ -25,104 +121,41 @@ class StreamServer(Thread):
         self._callback = callback
         self._status = self.S_STOPPED
 
-    def prepare_ffmpeg_process(self):
-        args = self._args
-        logging.debug('args: {}'.format(args))
-        params = (args['video_input'] +
-                  ' {audio_input}'
-                  ' {video_output}'
-                  ' {audio_output}'
-                  ' -map 0 -map 1 -f flv tcp://127.0.0.1:9999'
-                  ).format(video_input=args['video_input'],
-                           video_output=args['video_output'],
-                           audio_input=args['audio_input'],
-                           audio_output=args['audio_output'],
-                           x=args['x'],
-                           y=args['y'],
-                           w=args['w'],
-                           h=args['h'])
-        cmdline = ['ffmpeg'] + shlex.split(params)
-        logging.info('ffmpeg start: ' + ' '.join(cmdline))
-        return subprocess.Popen(cmdline,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-
-    def prepare_server_process(self):
-        args = self._args
-        logging.debug('args: {}'.format(args))
-        params = (CrossPlatform.get().share_path('crtmpserver.lua'))
-        cmdline = ['crtmpserver'] + shlex.split(params)
-        logging.info('stream server start: ' + ' '.join(cmdline))
-        return subprocess.Popen(cmdline,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-
     def run(self):
-        def ffmpeg_process(fd):
-            if fd not in (self.p_ffmpeg.stdout, self.p_ffmpeg.stderr):
-                return
-            logging.debug('FFMPEG: ' + fd.readline().strip())
+        class ProcessDead(Exception):
+            pass
 
-        def server_process(fd):
-            if fd not in (self.p_server.stdout, self.p_server.stderr):
-                return
-            line = fd.readline().strip()
-            logging.debug('SERVER: ' + line)
-            if hasattr(self, '_url'):
-                return
-            index = line.find('Stream INLFLV(1) with name')
-            if index < 0:
-                return
-            fields = line[index:].split('`', 2)
-            if len(fields) != 3:
-                logging.debug('server_process fields counts != 3: ' + str(fields))
-                return
-            self._url = "rtmp://{ip}:1936/flvplayback/" + fields[1]
-            self.status = self.S_STARTED
+        logging.info('StreamServer Start')
 
         self.status = self.S_STARTING
-        self.p_server = self.prepare_server_process()
-        self.p_ffmpeg = self.prepare_ffmpeg_process()
+        self.p_server = ServerProcess(self).run(self._args)
+        self.p_ffmpeg = FfmpegProcess(self).run(self._args)
         procs = (self.p_ffmpeg, self.p_server)
-        logging.info('StreamServer Start')
+        inputs = []
+        map(lambda p: inputs.extend(p.output_fds()), procs)
+
         try:
-            inputs = []
-            for p in procs:
-                inputs.extend((p.stdout, p.stderr))
-            go = True
             while True:
                 R, W, E = select(inputs, [], [])
-                for i, p in enumerate(procs):
-                    p.poll()
-                    if p.returncode is not None:
-                        logging.info('{} dead'.format(i))
-                        go = False
-                        break
-                if not go:
-                    break
+                for p in procs:
+                    if p.is_dead():
+                        raise ProcessDead()
                 for fd in R:
-                    ffmpeg_process(fd)
-                    server_process(fd)
+                    map(lambda p: p.process(fd), procs)
+        #except ProcessDead:
         except:
             pass
         self.stop()
 
     def stop(self):
-        def kill_and_wait(p):
-            try:
-                p.kill()
-            except OSError:
-                # maybe already dead
-                pass
-            try:
-                p.wait()
-            except OSError:
-                # maybe already recycled
-                pass
         self.status = self.S_STOPPING
-        map(kill_and_wait, (self.p_ffmpeg, self.p_server))
+        map(lambda p: p.kill_and_wait(), (self.p_ffmpeg, self.p_server))
         logging.info('StreamServer stop')
         self.status = self.S_STOPPED
+
+    @property
+    def args(self):
+        return self._args
 
     @property
     def url(self):
