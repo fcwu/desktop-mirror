@@ -2,28 +2,27 @@
 import wx
 
 
-class MyFrame(wx.Frame):
+class FrmAreaChooser(wx.Frame):
     def __init__(self, parent, id, title):
         wx.Frame.__init__(self, parent, id, title,
-                          style=wx.RESIZE_BORDER | wx.STAY_ON_TOP |
+                          style=wx.STAY_ON_TOP |
                           wx.FRAME_NO_TASKBAR | wx.CLIP_CHILDREN)
 
         self.rootPanel = wx.Panel(self)
-        self.rootPanel.SetBackgroundColour(wx.Colour(128, 0, 0))
+        self.rootPanel.SetBackgroundColour(wx.Colour(0, 0, 0))
 
         centerPanel = wx.Panel(self.rootPanel)
-        centerPanel.SetBackgroundColour(wx.Colour(0, 128, 0))
+        centerPanel.SetBackgroundColour(wx.Colour(0, 0, 0))
 
         innerPanel = wx.Panel(centerPanel)
-        innerPanel.SetBackgroundColour(wx.Colour(0, 0, 128))
+        innerPanel.SetBackgroundColour(wx.Colour(0, 0, 0))
 
         rootBox = wx.BoxSizer(wx.HORIZONTAL)
         centerBox = wx.BoxSizer(wx.HORIZONTAL)
         innerBox = wx.BoxSizer(wx.VERTICAL)
 
         # I want this line visible in the CENTRE of the inner panel
-        self.txt = wx.StaticText(innerPanel,
-                                 label="Start Live!")
+        self.txt = wx.StaticText(innerPanel, label="")
         self.txt.SetFont(wx.Font(20, wx.MODERN, wx.NORMAL, wx.BOLD))
         innerBox.Add(self.txt, 0, wx.ALL | wx.ALIGN_CENTER, border=0)
         innerPanel.SetSizer(innerBox)
@@ -48,7 +47,10 @@ class MyFrame(wx.Frame):
         self.mouse_start_pos = None
         self.mouse_end_pos = None
         self.step = 0
-        self.count_to_next_step = 0
+
+        self.dialog = HintDialog(self, -1)
+        self.dialog.SetTransparent(100)
+        self.dialog.Show()
 
     def update_title(self, event):
         # border colorize
@@ -94,6 +96,7 @@ class MyFrame(wx.Frame):
         # start point
         if self.step == 0 and wx.GetMouseState().LeftDown():
             self.txt.SetLabel('')
+            self.dialog.Close(True)
 
         # end point
         if self.step == 3 and not wx.GetMouseState().LeftDown():
@@ -121,16 +124,42 @@ class MyFrame(wx.Frame):
             y = pos.y if pos.y < self.mouse_start_pos.y else self.mouse_start_pos.y
             w = pos.x if pos.x > self.mouse_start_pos.x else self.mouse_start_pos.x
             h = pos.y if pos.y > self.mouse_start_pos.y else self.mouse_start_pos.y
-            print '{}x{}+{}+{}'.format(x, y, w, h)
+            print '{} {} {} {}'.format(x, y, w, h)
         self.Destroy()
+
+
+
+class HintDialog(wx.Dialog):
+    def __init__(self, parent, id, title=""):
+        wx.Dialog.__init__(self, parent, id, title,
+                           style=wx.STAY_ON_TOP |
+                           wx.FRAME_NO_TASKBAR | wx.CLIP_CHILDREN)
+
+        self.rootPanel = wx.Panel(self)
+        self.rootPanel.SetBackgroundColour(wx.Colour(0, 0, 0))
+
+        innerBox = wx.BoxSizer(wx.VERTICAL)
+
+        self.txt = wx.StaticText(self.rootPanel, -1,
+                                 'Draw a retangular to select area')
+        self.txt.SetFont(wx.Font(20, wx.MODERN, wx.NORMAL, wx.BOLD))
+        innerBox.Add(self.txt, 0, wx.ALL | wx.ALIGN_CENTER, border=0)
+        self.rootPanel.SetSizer(innerBox)
+        self.Bind(wx.EVT_CLOSE, self.OnClose)
+        innerBox.Fit(self)
+
+    def OnClose(self, event):
+        self.Destroy()
+
 
 class MyApp(wx.App):
     def OnInit(self):
-        frame = MyFrame(None, -1, 'Live Area')
+        frame = FrmAreaChooser(None, -1, 'Live Area')
         frame.Show(True)
         frame.Center()
         frame.SetTransparent(100)
         return True
 
-app = MyApp(0)
-app.MainLoop()
+if __name__ == '__main__':
+    app = MyApp(0)
+    app.MainLoop()

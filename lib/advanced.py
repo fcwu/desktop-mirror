@@ -550,11 +550,11 @@ class SelectionArea(Thread):
         self._callback = callback
 
     def run(self):
-        if os.path.isfile('xrectsel/xrectsel') and \
-           os.access('xrectsel/xrectsel', os.X_OK):
-            execution = 'xrectsel/xrectsel'
+        if os.path.isfile('lib/areachooser.py') and \
+           os.access('lib/areachooser.py', os.X_OK):
+            execution = 'lib/areachooser.py'
         else:
-            execution = 'xrectsel'
+            execution = 'areachooser.py'
         cmd = Command(execution + ' "%x %y %w %h"', True, True).run()
         line = cmd.stdout.split()
         self._callback(line[0:4])
