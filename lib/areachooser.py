@@ -30,7 +30,8 @@ class FrmAreaChooser(wx.Frame):
         centerBox.Add(innerPanel, 1, wx.ALL | wx.ALIGN_CENTER, border=0)
         centerPanel.SetSizer(centerBox)
 
-        rootBox.Add(centerPanel, 1, wx.ALL | wx.ALIGN_CENTER | wx.EXPAND, border=5)
+        rootBox.Add(centerPanel, 1, wx.ALL | wx.ALIGN_CENTER | wx.EXPAND,
+                    border=5)
         self.rootPanel.SetSizer(rootBox)
 
         rootBox.Fit(self)
@@ -41,7 +42,7 @@ class FrmAreaChooser(wx.Frame):
 
         self.Bind(wx.EVT_CLOSE, self.OnClose)
         self.timer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, self.update_title)
+        self.Bind(wx.EVT_TIMER, self.OnTimer)
         self.timer.Start(60)  # in miliseconds
         self.background_colour = 0
         self.mouse_start_pos = None
@@ -52,8 +53,7 @@ class FrmAreaChooser(wx.Frame):
         self.dialog.SetTransparent(100)
         self.dialog.Show()
 
-    def update_title(self, event):
-        # border colorize
+    def update_border_color(self, event):
         if self.step >= 1:
             self.background_colour = (self.background_colour + 8) % 512
             if self.background_colour >= 256:
@@ -63,35 +63,38 @@ class FrmAreaChooser(wx.Frame):
             self.rootPanel.SetBackgroundColour(wx.Colour(colour,
                                                          colour,
                                                          colour))
-        # move window
+
+    def update_window_position(self, event):
         if self.step == 0:
             pos = wx.GetMousePosition()
             self.SetPosition((pos.x, pos.y))
             self.SetSize((1, 1))
             self.mouse_start_pos = pos
-        if self.step == 1:
+        elif self.step == 1:
             pos = wx.GetMousePosition()
-            x = pos.x if pos.x < self.mouse_start_pos.x else self.mouse_start_pos.x
-            y = pos.y if pos.y < self.mouse_start_pos.y else self.mouse_start_pos.y
-            w = pos.x if pos.x > self.mouse_start_pos.x else self.mouse_start_pos.x
-            h = pos.y if pos.y > self.mouse_start_pos.y else self.mouse_start_pos.y
+            start = self.mouse_start_pos
+            x = pos.x if pos.x < start.x else start.x
+            y = pos.y if pos.y < start.y else start.y
+            w = pos.x if pos.x > start.x else start.x
+            h = pos.y if pos.y > start.y else start.y
             if (w - x) >= 10 or (h - y) >= 10:
                 self.step = 2
-        if self.step >= 2 and self.step <= 3:
+        elif self.step >= 2 and self.step <= 3:
             pos = wx.GetMousePosition()
-            x = pos.x if pos.x < self.mouse_start_pos.x else self.mouse_start_pos.x
-            y = pos.y if pos.y < self.mouse_start_pos.y else self.mouse_start_pos.y
-            w = pos.x if pos.x > self.mouse_start_pos.x else self.mouse_start_pos.x
-            h = pos.y if pos.y > self.mouse_start_pos.y else self.mouse_start_pos.y
-            if (w - x) <= 10:
-                w = x + 10
-            if (h - y) <= 10:
-                h = y + 10
-            w += 1
-            h += 1
+            start = self.mouse_start_pos
+            x = pos.x if pos.x < start.x else start.x
+            y = pos.y if pos.y < start.y else start.y
+            w = pos.x if pos.x > start.x else start.x
+            h = pos.y if pos.y > start.y else start.y
+            w = x + 10 if (w - x) <= 10 else w + 1
+            h = y + 10 if (h - y) <= 10 else h + 1
             self.SetPosition((x, y))
             self.SetSize((w - x, h - y))
             self.mouse_end_pos = pos
+
+    def OnTimer(self, event):
+        self.update_border_color(event)
+        self.update_window_position(event)
 
         # start point
         if self.step == 0 and wx.GetMouseState().LeftDown():
@@ -120,13 +123,13 @@ class FrmAreaChooser(wx.Frame):
     def OnClose(self, event):
         if self.step == 7:
             pos = self.mouse_end_pos
-            x = pos.x if pos.x < self.mouse_start_pos.x else self.mouse_start_pos.x
-            y = pos.y if pos.y < self.mouse_start_pos.y else self.mouse_start_pos.y
-            w = pos.x if pos.x > self.mouse_start_pos.x else self.mouse_start_pos.x
-            h = pos.y if pos.y > self.mouse_start_pos.y else self.mouse_start_pos.y
-            print '{} {} {} {}'.format(x, y, w, h)
+            start = self.mouse_start_pos
+            x = pos.x if pos.x < start.x else start.x
+            y = pos.y if pos.y < start.y else start.y
+            w = pos.x if pos.x > start.x else start.x
+            h = pos.y if pos.y > start.y else start.y
+            print '{} {} {} {}'.format(x, y, w - x, h - y)
         self.Destroy()
-
 
 
 class HintDialog(wx.Dialog):

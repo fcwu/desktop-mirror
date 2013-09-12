@@ -165,8 +165,8 @@ class UiAdvanced(wx.Frame):
 
         def targetBox():
             hbox = wx.BoxSizer(wx.HORIZONTAL)
-            hbox.Add(wx.StaticText(panel, label="Target"), flag=wx.ALL,
-                     border=15)
+            hbox.Add(wx.StaticText(panel, label="Target"),
+                     flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=5)
             cb = wx.ComboBox(panel, 500, "127.0.0.1",
                              style=wx.CB_DROPDOWN | wx.TE_PROCESS_ENTER
                              )
@@ -253,6 +253,10 @@ class UiAdvanced(wx.Frame):
 
             fgs.AddGrowableCol(1, 1)
             boxsizer.Add(fgs, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
+            #fgs.GetContainingWindow().Hide()
+            map(lambda w: w.Hide(), [w.GetWindow() for w in fgs.GetChildren()
+                if w.GetWindow() is not None])
+            sb.Hide()
             return boxsizer
 
         def audioBox():
@@ -272,6 +276,9 @@ class UiAdvanced(wx.Frame):
 
             fgs.AddGrowableCol(1, 1)
             boxsizer.Add(fgs, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
+            map(lambda w: w.Hide(), [w.GetWindow() for w in fgs.GetChildren()
+                if w.GetWindow() is not None])
+            sb.Hide()
             return boxsizer
 
         panel = wx.Panel(self, -1)

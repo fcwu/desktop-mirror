@@ -76,6 +76,7 @@ class FfmpegProcess(Process):
                            y=args['y'],
                            w=args['w'],
                            h=args['h'])
+# $ avconv -f x11grab -s 400x400 -r 25 -i :0.0+689,406 -vcodec libx264 -preset ultrafast -tune zerolatency -r 25 -g 25 -flags -global_header http://127.0.0.1:8090/feed1.ffm
         return ['ffmpeg'] + shlex.split(params)
 
     def process(self, fd):
@@ -85,11 +86,57 @@ class FfmpegProcess(Process):
 
 
 class ServerProcess(Process):
+    CONFIG_TEMPLATE = '''
+Port 8090
+BindAddress 0.0.0.0
+MaxHTTPConnections 10
+MaxClients 5
+MaxBandwidth 10000
+CustomLog -
+RTSPPort 5004
+RTSPBindAddress 0.0.0.0
+
+<Feed feed1.ffm>
+	File /tmp/feed1.ffm
+	FileMaxSize 200k
+	ACL allow 127.0.0.1
+</Feed>
+
+<Stream live.h264>
+	Format rtp
+	Feed feed1.ffm
+
+    VideoCodec libx264
+	VideoFrameRate 30
+	VideoBitRate 512
+	VideoSize 320x240
+	AVOptionVideo crf 23
+	AVOptionVideo preset medium
+	# for more info on crf/preset options, type: x264 --help
+	AVOptionVideo flags -global_header
+
+    AudioCodec aac
+	Strict -2
+	AudioBitRate 128
+	AudioChannels 2
+	AudioSampleRate 44100
+	AVOptionAudio flags -global_header
+</Stream>
+
+<Stream stat.html>
+	Format status
+	# Only allow local people to get the status
+	ACL allow localhost
+	ACL allow 192.168.0.0 192.168.255.255
+</Stream>
+    '''
+
     def __init__(self, server):
         super(ServerProcess, self).__init__(server, 'server')
 
     def prepare(self, args):
         params = (CrossPlatform.get().share_path('crtmpserver.lua'))
+# $ ffserver -d -f f.conf
         return ['crtmpserver'] + shlex.split(params)
 
     def process(self, fd):
