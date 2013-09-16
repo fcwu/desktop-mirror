@@ -78,6 +78,7 @@ class UiAdvanced(wx.Frame):
         unique = []
         targets = self._core.targets
         widget = self._input['address']
+        #logging.debug('hosts: {}'.format(hosts))
         for f in targets:
             for service in targets[f]:
                 key = service['host']
@@ -335,7 +336,8 @@ class UiAdvanced(wx.Frame):
                                  w=inp['w'].GetValue(),
                                  h=inp['h'].GetValue(),
                                  ip=self._target['ip'],
-                                 port=self._target['port'])
+                                 port=self._target['port'],
+                                 service=self._target['service'])
         return True
 
     def OnCloseWindow(self, event):
@@ -429,7 +431,7 @@ class Core(Thread):
     def stream_server_start(self, *args, **kargs):
         if self.is_streaming():
             return
-        logging.info('StreamServer start: '.format(kargs))
+        logging.info('StreamServer start: {}'.format(kargs))
         self._stream_server = StreamServer(kargs, lambda data:
                                            self.handler('server', data))
         self._stream_server.start()
@@ -444,24 +446,40 @@ class Core(Thread):
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect((remote_ip, 0))
             return s.getsockname()[0]
+
+        def xbmc():
+            stream_url = self._stream_server.url.format(ip=myip(remote_ip))
+            url = 'http://{}:{}/xbmcCmds/xbmcHttp?command=PlayFile({})'.format(
+                  remote_ip, remote_port, stream_url)
+            req = urllib2.Request(url)
+            logging.debug('url = {}'.format(url))
+            response = urllib2.urlopen(req)
+            result = response.read()
+            logging.debug('result: {}'.format(result))
+
+        def desktop_mirror():
+            stream_url = self._stream_server.url.format(ip=myip(remote_ip))
+            data_as_json = json.dumps({'method': 'Player.Open',
+                                      'id': 1, 'jsonrpc': '2.0',
+                                      'params': {'item': {'file': stream_url}}}
+                                      )
+            url = 'http://{}:{}/jsonrpc'.format(remote_ip, remote_port)
+            logging.debug('url = {}'.format(url))
+            logging.debug('  json = {}'.format(data_as_json))
+            req = urllib2.Request(url, data_as_json,
+                                  {'Content-Type': 'application/json'})
+            response = urllib2.urlopen(req)
+            result = response.read()
+            #logging.debug('result: {}'.format(result))
+            result = json.loads(result)
+            ##switch back to json with pretty format
+            logging.debug(json.dumps(result, indent=4))
         logging.info('Got streaming url: {}'.
                      format(self._stream_server.url))
-        stream_url = self._stream_server.url.format(ip=myip(remote_ip))
-        data_as_json = json.dumps({'method': 'Player.Open',
-                                   'id': 1,
-                                   'jsonrpc': '2.0',
-                                   'params': {'item': {'file': stream_url}}})
-        url = 'http://{}:{}/jsonrpc'.format(remote_ip, remote_port)
-        logging.debug('url = {}'.format(url))
-        logging.debug('  json = {}'.format(data_as_json))
-        req = urllib2.Request(url, data_as_json,
-                              {'Content-Type': 'application/json'})
-        response = urllib2.urlopen(req)
-        result = response.read()
-        logging.debug('result: {}'.format(result))
-        result = json.loads(result)
-        ##switch back to json with pretty format
-        logging.debug(json.dumps(result, indent=4))
+        if service == '_desktop-mirror._tcp':
+            desktop_mirror()
+        else:
+            xbmc()
 
     @property
     def targets(self):

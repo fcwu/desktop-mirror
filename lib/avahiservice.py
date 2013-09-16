@@ -45,7 +45,7 @@ class AvahiService(Thread):
 
         self._queried.append(True)
         ip = socket.inet_ntoa(rdata)
-        fullname = fullname[:-6]
+        fullname = fullname[:fullname.rfind('.local')]
         logging.debug('Queryed service:: fullname={}, IP={}'.
                       format(fullname, ip))
         if fullname not in self._hosts:
@@ -66,7 +66,7 @@ class AvahiService(Thread):
                                                             port))
         if fullname not in self._targets:
             self._targets[fullname] = []
-        host = hosttarget[:-7]
+        host = hosttarget[:hosttarget.rfind('.local')]
         if host != platform.node():
             service = fullname[fullname.find('.') + 1:-7]
             target = {'host': host, 'port': port, 'service': service}
@@ -146,9 +146,10 @@ class AvahiService(Thread):
         self._stoped = False
         logging.info('AvahiService started')
 
-        self.register_service(platform.node(), '_desktop-mirror._tcp', DEFAULT_PORT)
-        self.listen_browse(('_xbmc-jsonrpc._tcp', '_asustor-boxee._tcp',
-                            '_desktop-mirror._tcp'), self.browse_callback)
+        self.register_service(platform.node(), '_desktop-mirror._tcp',
+                              DEFAULT_PORT)
+        self.listen_browse(('_xbmc-web._tcp', '_desktop-mirror._tcp'),
+                           self.browse_callback)
         logging.info('AvahiService stoped')
 
         self._stoped = True
