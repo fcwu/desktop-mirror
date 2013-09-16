@@ -1,4 +1,4 @@
-SUBDIRS = xrectsel
+SUBDIRS = 
 PWD = $(shell pwd)
 
 .PHONY: subdirs $(SUBDIRS)
