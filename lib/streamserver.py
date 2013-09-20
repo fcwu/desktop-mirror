@@ -1,13 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import sys
 from threading import Thread
 import logging
 import shlex
-from subprocess import Popen, PIPE
-from select import select
+from subprocess import Popen, PIPE, STDOUT
+#from select import select
 from crossplatform import CrossPlatform
 from common import DEFAULT_PORT
+try:
+    from Queue import Queue, Empty
+except ImportError:
+    from queue import Queue, Empty  # python 3.x
+
+ON_POSIX = 'posix' in sys.builtin_module_names
 
 
 class StreamIsNotAvailable(Exception):
@@ -24,7 +31,7 @@ class Process(object):
     def run(self, args):
         cmdline = self.prepare(args)
         logging.info(self._name + ' start: ' + ' '.join(cmdline))
-        p = Popen(cmdline, stdout=PIPE, stderr=PIPE)
+        p = Popen(cmdline, stdout=PIPE, stderr=STDOUT)
         self.p = p
         return self
 
@@ -52,6 +59,14 @@ class Process(object):
         self.p.poll()
         return self.p.returncode
 
+    @property
+    def stdout(self):
+        return self.p.stdout
+
+    @property
+    def stderr(self):
+        return self.p.stderr
+
     def is_dead(self):
         self.p.poll()
         return self.p.returncode is not None
@@ -66,7 +81,6 @@ class FfmpegCrtmpProcess(Process):
                   ' {audio_input}'
                   ' {video_output}'
                   ' {audio_output}'
-                  ' -map 0 -map 1'
                   ' -f flv tcp://127.0.0.1:' + str(DEFAULT_PORT + 1)
                   ).format(video_input=args['video_input'],
                            video_output=args['video_output'],
@@ -78,10 +92,9 @@ class FfmpegCrtmpProcess(Process):
                            h=args['h'])
         return ['avconv'] + shlex.split(params)
 
-    def process(self, fd):
-        if fd not in (self.p.stdout, self.p.stderr):
+    def process(self, line):
+        if not line.startswith(self.name):
             return
-        logging.debug(self._name + ': ' + fd.readline().strip())
 
 
 class FfmpegTcpProcess(Process):
@@ -93,7 +106,6 @@ class FfmpegTcpProcess(Process):
                   ' {audio_input}'
                   ' {video_output}'
                   ' {audio_output}'
-                  ' -map 0 -map 1'
                   ' -f mpegts tcp://0.0.0.0:' + str(DEFAULT_PORT + 1) +
                   '?listen'
                   ).format(video_input=args['video_input'],
@@ -107,12 +119,10 @@ class FfmpegTcpProcess(Process):
         self._server._url = 'tcp://{ip}:' + str(DEFAULT_PORT + 1)
         return ['avconv'] + shlex.split(params)
 
-    def process(self, fd):
-        if fd not in (self.p.stdout, self.p.stderr):
+    def process(self, line):
+        if not line.startswith(self.name):
             return
-        line = fd.readline().strip()
-        logging.debug(self._name + ': ' + line)
-        if line.startswith('Stream #1'):
+        if line.startswith(self.name + ':     Stream #'):
             self._server.status = self._server.S_STARTED
 
 
@@ -124,11 +134,9 @@ class ServerProcess(Process):
         params = (CrossPlatform.get().share_path('crtmpserver.lua'))
         return ['crtmpserver'] + shlex.split(params)
 
-    def process(self, fd):
-        if fd not in (self.p.stdout, self.p.stderr):
+    def process(self, line):
+        if not line.startswith(self.name):
             return
-        line = fd.readline().strip()
-        logging.debug('SERVER: ' + line)
         if hasattr(self, '_url'):
             return
         index = line.find('Stream INLFLV(1) with name')
@@ -151,7 +159,6 @@ class StreamServer(Thread):
 
     def __init__(self, args, callback):
         Thread.__init__(self)
-        logging.debug('{}'.format(type(args['w'])))
         args['w'] = int(str(args['w']))
         args['w'] += args['w'] % 2
         args['h'] = int(str(args['h']))
@@ -169,6 +176,16 @@ class StreamServer(Thread):
             self._processes.append(FfmpegTcpProcess(self).run(self._args))
 
     def run(self):
+        def enqueue_output(out, queue, prefix):
+            for line in iter(out.readline, b''):
+                queue.put(prefix + ': ' + line)
+            out.close()
+
+        def create_monitor_thread(p):
+            t = Thread(target=enqueue_output, args=(p.stdout, q, p.name))
+            t.daemon = True  # thread dies with the program
+            t.start()
+
         class ProcessDead(Exception):
             pass
 
@@ -176,21 +193,28 @@ class StreamServer(Thread):
 
         self.status = self.S_STARTING
         self._start_processes()
-        inputs = []
-        map(lambda p: inputs.extend(p.fds()), self._processes)
+        q = Queue()
+        map(create_monitor_thread, self._processes)
 
-        try:
-            while True:
-                R, W, E = select(inputs, [], [])
-                for p in self._processes:
-                    if p.is_dead():
-                        raise ProcessDead()
-                for fd in R:
-                    map(lambda p: p.process(fd), self._processes)
-        except ProcessDead:
-            pass
-        except Exception as e:
-            logging.error('Exception: ' + str(e))
+        is_dead = False
+        while not is_dead:
+            try:
+                #line = q.get_nowait()
+                line = q.get(timeout=.5)
+                line = line.strip()
+                logging.debug(line)
+                map(lambda p: p.process(line), self._processes)
+            except Empty:
+                pass
+                #print('no output yet')
+            else:  # got line
+                # ... do something with line
+                pass
+            for p in self._processes:
+                if p.is_dead():
+                    logging.info('{} is dead'.format(p.name))
+                    is_dead = True
+
         self.stop()
 
     def stop(self):

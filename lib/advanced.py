@@ -73,11 +73,13 @@ class UiAdvanced(wx.Frame):
             config.write(configfile)
 
     def OnAvahi(self, data):
-        self._input['address'].Clear()
         hosts = self._core.hosts
         unique = []
         targets = self._core.targets
         widget = self._input['address']
+        val = widget.GetValue()
+        widget.Clear()
+        logging.debug('val: {}'.format(val))
         #logging.debug('hosts: {}'.format(hosts))
         for f in targets:
             for service in targets[f]:
@@ -94,6 +96,8 @@ class UiAdvanced(wx.Frame):
                                                   t['ip'],
                                                   t['port']))
                 widget.SetClientData(widget.GetCount() - 1, t)
+        # After appending, widget value will be cleared
+        widget.SetValue(val)
 
     def OnSelection(self, data):
         self._input['x'].SetValue(data[0])
@@ -352,10 +356,14 @@ class UiAdvanced(wx.Frame):
                         'service': data['service']}
         logging.info('OnTargetChosen: {} ClientData: {}'.format(
                      evt.GetString(), data))
+        self._target_chosen_cache = evt.GetString()
         self._input_stream.Enable(True)
 
     def OnTargetKey(self, evt):
         logging.info('OnTargetKey: %s' % evt.GetString())
+        if hasattr(self, '_target_chosen_cache') and \
+                self._target_chosen_cache == evt.GetString():
+            return
         self._target = None
         m = re.search('^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d{1,5})?$',
                       evt.GetString())
@@ -367,7 +375,7 @@ class UiAdvanced(wx.Frame):
         else:
             port = DEFAULT_PORT + 1 if m.group(2) is None else m.group(2)
             self._target = {'ip': m.group(1), 'port': port,
-                            'service': 'desktop-mirror'}
+                            'service': '_desktop-mirror._tcp'}
             self._input_stream.Enable(True)
         evt.Skip()
 
