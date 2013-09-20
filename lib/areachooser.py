@@ -5,7 +5,7 @@ import wx
 class FrmAreaChooser(wx.Frame):
     def __init__(self, parent, id, title):
         wx.Frame.__init__(self, parent, id, title,
-                          style=wx.STAY_ON_TOP |
+                          style=wx.RESIZE_BORDER | wx.STAY_ON_TOP |
                           wx.FRAME_NO_TASKBAR | wx.CLIP_CHILDREN)
 
         self.rootPanel = wx.Panel(self)
@@ -43,7 +43,7 @@ class FrmAreaChooser(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.OnClose)
         self.timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.OnTimer)
-        self.timer.Start(60)  # in miliseconds
+        self.timer.Start(40)  # in miliseconds
         self.background_colour = 0
         self.mouse_start_pos = None
         self.mouse_end_pos = None
@@ -81,39 +81,47 @@ class FrmAreaChooser(wx.Frame):
                 self.step = 2
         elif self.step >= 2 and self.step <= 3:
             pos = wx.GetMousePosition()
+            if self.mouse_end_pos is not None:
+                if pos.x == self.mouse_end_pos.x and \
+                   pos.y == self.mouse_end_pos.y:
+                    return
             start = self.mouse_start_pos
             x = pos.x if pos.x < start.x else start.x
             y = pos.y if pos.y < start.y else start.y
             w = pos.x if pos.x > start.x else start.x
             h = pos.y if pos.y > start.y else start.y
-            w = x + 10 if (w - x) <= 10 else w + 1
-            h = y + 10 if (h - y) <= 10 else h + 1
+            #w = x + 10 if (w - x) <= 10 else w + 1
+            #h = y + 10 if (h - y) <= 10 else h + 1
+            w = w + 1
+            h = h + 1
             self.SetPosition((x, y))
             self.SetSize((w - x, h - y))
             self.mouse_end_pos = pos
+            print 'OnTimer, {} {} {} {}'.format(x, y, w - x, h - y)
 
     def OnTimer(self, event):
         self.update_border_color(event)
         self.update_window_position(event)
+        is_left_down = wx.GetMouseState().LeftDown()
 
         # start point
-        if self.step == 0 and wx.GetMouseState().LeftDown():
+        if self.step == 0 and is_left_down:
             self.txt.SetLabel('')
             self.dialog.Close(True)
 
         # end point
-        if self.step == 3 and not wx.GetMouseState().LeftDown():
-            self.txt.SetLabel('Start Live!')
+        if self.step == 3 and not is_left_down:
+            self.txt.SetLabel('Confirm?')
 
         # confirm
-        if self.step == 5 and not wx.GetMouseState().LeftDown():
+        if self.step == 5 and not is_left_down:
             self.Close(True)
 
         # increment
         odd = (self.step % 2) == 1
-        if not odd and wx.GetMouseState().LeftDown():
+        if not odd and is_left_down:
             self.step += 1
-        if odd and not wx.GetMouseState().LeftDown():
+        elif odd and not is_left_down:
             self.step += 1
 
     def OnMouseEvents(self, e):
