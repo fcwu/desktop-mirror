@@ -110,7 +110,7 @@ class UiAdvanced(wx.Frame):
                       StreamServer.S_STARTING: 'Start...',
                       StreamServer.S_STARTED: 'Started',
                       StreamServer.S_STOPPING: 'Stop...'}
-        self.statusbar.SetStatusText(status_str[data])
+        #self.statusbar.SetStatusText(status_str[data])
         if StreamServer.S_STARTED != data:
             return
         try:
@@ -154,6 +154,199 @@ class UiAdvanced(wx.Frame):
             dispatch[evt.attr1](evt.attr2)
 
     def InitUI(self):
+        def titleBox(hide=True):
+            font = wx.SystemSettings_GetFont(wx.SYS_SYSTEM_FONT)
+            font.SetPointSize(16)
+
+            hbox = wx.BoxSizer(wx.HORIZONTAL)
+            text1 = wx.StaticText(panel, label="Desktop Mirror")
+            text1.SetFont(font)
+            hbox.Add(text1, flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=15)
+            #hbox = wx.BoxSizer(wx.HORIZONTAL)
+            #line = wx.StaticLine(panel)
+            #hbox.Add(line, 1, flag=wx.EXPAND | wx.ALL, border=10)
+            #vbox.Add(hbox, 1, wx.ALL, 5)
+            if hide:
+                map(lambda w: w.Hide(),
+                    [w.GetWindow() for w in hbox.GetChildren()
+                     if w.GetWindow() is not None])
+            return hbox
+
+        def targetBox():
+            hbox = wx.BoxSizer(wx.HORIZONTAL)
+            #hbox.Add(wx.StaticText(panel, label="Target"),
+            #         flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=5)
+            cb = wx.ComboBox(panel, 500, "127.0.0.1",
+                             style=wx.CB_DROPDOWN | wx.TE_PROCESS_ENTER
+                             )
+            button1 = wx.Button(panel, label="Streaming")
+            hbox.Add(cb, 1, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT,
+                     border=0)
+            hbox.Add(button1, 0, flag=wx.EXPAND | wx.LEFT | wx.ALIGN_RIGHT,
+                     border=5)
+            self._input['address'] = cb
+            self._input_stream = button1
+
+            self.Bind(wx.EVT_COMBOBOX, self.OnTargetChosen, cb)
+            self.Bind(wx.EVT_TEXT, self.OnTargetKey, cb)
+            self.Bind(wx.EVT_TEXT_ENTER, self.OnTargetKeyEnter, cb)
+            self.Bind(wx.EVT_BUTTON, self.OnClickStream, button1)
+
+            return hbox
+
+        def geometryBox(hide=True):
+            sb = wx.StaticBox(panel, label="Geometry")
+            boxsizer = wx.StaticBoxSizer(sb, wx.VERTICAL)
+
+            hbox = wx.BoxSizer(wx.HORIZONTAL)
+
+            tc1 = wx.TextCtrl(panel)
+            tc2 = wx.TextCtrl(panel)
+            tc3 = wx.TextCtrl(panel)
+            tc4 = wx.TextCtrl(panel)
+            self._input['x'] = tc1
+            self._input['y'] = tc2
+            self._input['w'] = tc3
+            self._input['h'] = tc4
+
+            hbox.Add(wx.StaticText(panel, label="X"),
+                     flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(5)
+            hbox.Add(tc1, 1, flag=wx.EXPAND)
+            hbox.AddSpacer(10)
+            hbox.Add(wx.StaticText(panel, label="Y"),
+                     flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(5)
+            hbox.Add(tc2, 1, flag=wx.EXPAND)
+            hbox.AddSpacer(10)
+            hbox.Add(wx.StaticText(panel, label="W"),
+                     flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(5)
+            hbox.Add(tc3, 1, flag=wx.EXPAND)
+            hbox.AddSpacer(10)
+            hbox.Add(wx.StaticText(panel, label="H"),
+                     flag=wx.TOP | wx.LEFT | wx.BOTTOM, border=5)
+            hbox.AddSpacer(5)
+            hbox.Add(tc4, 1, flag=wx.EXPAND)
+
+            boxsizer.Add(hbox, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
+
+            hbox2 = wx.BoxSizer(wx.HORIZONTAL)
+            button1 = wx.Button(panel, label="Select Area")
+            hbox2.Add(button1, 1,
+                      flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT, border=15)
+            button2 = wx.Button(panel, label="Full Screen")
+            hbox2.Add(button2, 1, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT,
+                      border=15)
+            boxsizer.Add(hbox2, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
+
+            self.Bind(wx.EVT_BUTTON, self.OnClickSelectionArea, button1)
+            self.Bind(wx.EVT_BUTTON, self.OnClickFullScreen, button2)
+
+            if hide:
+                map(lambda w: w.Hide(),
+                    [w.GetWindow() for w in hbox.GetChildren()
+                    if w.GetWindow() is not None])
+                map(lambda w: w.Hide(),
+                    [w.GetWindow() for w in hbox2.GetChildren()
+                    if w.GetWindow() is not None])
+                sb.Hide()
+
+            return boxsizer
+
+        def videoBox(hide=True):
+            sb = wx.StaticBox(panel, label="Video")
+            boxsizer = wx.StaticBoxSizer(sb, wx.VERTICAL)
+            fgs = wx.FlexGridSizer(3, 2, 5, 25)
+
+            tc1 = wx.TextCtrl(panel)
+            tc2 = wx.TextCtrl(panel)
+            self._input['video_input'] = tc1
+            self._input['video_output'] = tc2
+
+            fgs.AddMany([(wx.StaticText(panel, label="input")),
+                         (tc1, 1, wx.EXPAND),
+                         (wx.StaticText(panel, label="output")),
+                         (tc2, 1, wx.EXPAND)])
+
+            fgs.AddGrowableCol(1, 1)
+            boxsizer.Add(fgs, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
+
+            if hide:
+                map(lambda w: w.Hide(),
+                    [w.GetWindow() for w in fgs.GetChildren()
+                    if w.GetWindow() is not None])
+                sb.Hide()
+            return boxsizer
+
+        def audioBox(hide=True):
+            sb = wx.StaticBox(panel, label="Audio")
+            boxsizer = wx.StaticBoxSizer(sb, wx.VERTICAL)
+            fgs = wx.FlexGridSizer(3, 2, 5, 25)
+
+            tc1 = wx.TextCtrl(panel)
+            tc2 = wx.TextCtrl(panel)
+            self._input['audio_input'] = tc1
+            self._input['audio_output'] = tc2
+
+            fgs.AddMany([(wx.StaticText(panel, label="input")),
+                         (tc1, 1, wx.EXPAND),
+                         (wx.StaticText(panel, label="output")),
+                         (tc2, 1, wx.EXPAND)])
+
+            fgs.AddGrowableCol(1, 1)
+            boxsizer.Add(fgs, flag=wx.LEFT | wx.TOP | wx.EXPAND, border=5)
+
+            if hide:
+                map(lambda w: w.Hide(),
+                    [w.GetWindow() for w in fgs.GetChildren()
+                    if w.GetWindow() is not None])
+                sb.Hide()
+            return boxsizer
+
+        def fullareaBox(hide=True):
+            hbox = wx.BoxSizer(wx.HORIZONTAL)
+            self.rb1 = rb1 = wx.RadioButton(panel, -1, 'Fullscreen', style=wx.RB_GROUP)
+            hbox.Add(rb1,
+                     flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=5)
+            self.rb2 = rb2 = wx.RadioButton(panel, -1, 'Area')
+            hbox.Add(rb2,
+                     flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=5)
+
+            self.Bind(wx.EVT_RADIOBUTTON, self.OnClickFullArea, id=rb1.GetId())
+            self.Bind(wx.EVT_RADIOBUTTON, self.OnClickFullArea, id=rb2.GetId())
+
+            return hbox
+
+        panel = wx.Panel(self, -1)
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        vboxL = wx.BoxSizer(wx.VERTICAL)
+        vboxR = wx.BoxSizer(wx.VERTICAL)
+
+        png = wx.Image('icon_64x64_2.png', wx.BITMAP_TYPE_ANY).ConvertToBitmap()
+        image = wx.StaticBitmap(panel, -1, png, (0, 0),
+                                (png.GetWidth(), png.GetHeight()))
+        vboxL.Add(image)
+
+        flags = wx.EXPAND
+        #vboxR.Add(titleBox(), 0, wx.ALL, 0)
+        vboxR.Add(targetBox(), 1, flag=flags | wx.TOP, border=10)
+        vboxR.Add(fullareaBox(), 0, flag=flags, border=10)
+        for fn in (titleBox, geometryBox, videoBox, audioBox):
+            fn()
+            #vboxR.Add(fn(), 0, flag=flags, border=10)
+
+        hbox.Add(vboxL, 0, wx.ALL | wx.EXPAND | wx.ALIGN_CENTER, 10)
+        hbox.Add(vboxR, 1, wx.ALL | wx.EXPAND | wx.ALIGN_CENTER, 10)
+        #self.statusbar = self.CreateStatusBar()
+
+        panel.SetAutoLayout(True)
+        panel.SetSizer(hbox)
+        panel.Layout()
+        panel.Fit()
+        self.Fit()
+
+    def InitUIFull(self):
         def titleBox():
             font = wx.SystemSettings_GetFont(wx.SYS_SYSTEM_FONT)
             font.SetPointSize(16)
@@ -407,6 +600,13 @@ class UiAdvanced(wx.Frame):
         self._input['y'].SetValue(str(geometry[1]))
         self._input['w'].SetValue(str(geometry[2]))
         self._input['h'].SetValue(str(geometry[3]))
+
+    def OnClickFullArea(self, evt):
+        logging.debug('Event: {}'.format(evt.GetId()))
+        if evt.GetId() == self.rb1.GetId():
+            self.OnClickFullScreen(evt)
+        else:
+            self.OnClickSelectionArea(evt)
 
 
 def sync(func):
