@@ -43,11 +43,11 @@ class CrossPlatform(object):
 
 class CrossPlatformWindows(CrossPlatform):
     def system_config_path(self):
-        path = os.path.join('share', 'default.ini')
+        path = os.path.join('share', 'default_win7.ini')
         if os.path.exists(path):
             return path
         return os.path.join(wx.StandardPaths_Get().GetInstallPrefix(),
-                            'share', 'default.ini')
+                            'share', 'default_win7.ini')
 
     def share_path(self, filename):
         if os.path.exists('share'):
