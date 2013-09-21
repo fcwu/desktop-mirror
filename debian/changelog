@@ -1,3 +1,26 @@
+desktop-mirror (0.4) unstable; urgency=low
+
+  * Bump to git version e4c23da
+    - e4c23da UI enchancement and icon added
+    - a5810d0 Fix resizing window lag during area choosing
+    - f5cefdb Update UI
+    - b2878cb Fix execution error on Windows
+    - 67a94e0 Add time info in log
+    - bb35c5b Remove unused files
+    - 953c108 xbmc supports
+    - e5b4cda Hide V/A inputs, ffserver replace ongoing
+    - ca6dca7 Update area chooser
+    - 77a0b04 Add python script to choose area
+    - 8c94fd4 Add transparent and ffserver test files
+
+ -- Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>  Sat, 21 Sep 2013 21:43:51 +0800
+
+desktop-mirror (0.3) unstable; urgency=low
+
+  * Fix port conflict with crtmpserver
+
+ -- Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>  Thu, 29 Aug 2013 18:40:38 +0800
+
 desktop-mirror (0.2) unstable; urgency=low
 
   * Linux to Linux can stream each other
