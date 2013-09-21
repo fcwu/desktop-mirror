@@ -1,9 +1,0 @@
-#!/bin/bash
-
-
-if [ -x "./lib/advanced" ]; then
-    executable="./lib/advanced"
-else
-    executable="/usr/lib/desktop-mirror/advanced.py"
-fi
-exec $executable $*

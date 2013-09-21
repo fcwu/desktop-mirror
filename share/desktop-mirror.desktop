@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Encoding=UTF-8
+Name=Desktop Mirror
+Name[zh_TW]=螢幕映射
+Type=Application
+Terminal=false
+Exec=/usr/lib/desktop-mirror/advanced.py
+Icon=desktop-mirror-64
+Categories=Utility
+

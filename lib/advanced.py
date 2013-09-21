@@ -26,6 +26,7 @@ from crossplatform import CrossPlatform
 from avahiservice import AvahiService
 from streamserver import StreamServer
 from streamreceiver import StreamReceiver
+from areachooser import FrmAreaChooser
 
 SomeNewEvent, EVT_SOME_NEW_EVENT = wx.lib.newevent.NewEvent()
 
@@ -44,6 +45,7 @@ class UiAdvanced(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.OnCloseWindow)
 
         self.InitUI()
+        self.OnClickFullScreen(None)
         self.ConfigLoad()
         self.Centre()
         self.Show()
@@ -79,7 +81,7 @@ class UiAdvanced(wx.Frame):
         widget = self._input['address']
         val = widget.GetValue()
         widget.Clear()
-        logging.debug('val: {}'.format(val))
+        #logging.debug('val: {}'.format(val))
         #logging.debug('hosts: {}'.format(hosts))
         for f in targets:
             for service in targets[f]:
@@ -100,16 +102,21 @@ class UiAdvanced(wx.Frame):
         widget.SetValue(val)
 
     def OnSelection(self, data):
-        self._input['x'].SetValue(data[0])
-        self._input['y'].SetValue(data[1])
-        self._input['w'].SetValue(data[2])
-        self._input['h'].SetValue(data[3])
+        self._input['x'].SetValue(str(data[0]))
+        self._input['y'].SetValue(str(data[1]))
+        self._input['w'].SetValue(str(data[2]))
+        self._input['h'].SetValue(str(data[3]))
+        self._input_rb_area.SetLabel('Area ({}x{}+{}+{})'.format(
+                                     data[2],
+                                     data[3],
+                                     data[0],
+                                     data[1]))
 
     def OnStreamServer(self, data):
-        status_str = {StreamServer.S_STOPPED: 'Stopped',
-                      StreamServer.S_STARTING: 'Start...',
-                      StreamServer.S_STARTED: 'Started',
-                      StreamServer.S_STOPPING: 'Stop...'}
+        #status_str = {StreamServer.S_STOPPED: 'Stopped',
+        #              StreamServer.S_STARTING: 'Start...',
+        #              StreamServer.S_STARTED: 'Started',
+        #              StreamServer.S_STOPPING: 'Stop...'}
         #self.statusbar.SetStatusText(status_str[data])
         if StreamServer.S_STARTED != data:
             return
@@ -179,6 +186,7 @@ class UiAdvanced(wx.Frame):
             cb = wx.ComboBox(panel, 500, "127.0.0.1",
                              style=wx.CB_DROPDOWN | wx.TE_PROCESS_ENTER
                              )
+            cb.SetMinSize((250, 0))
             button1 = wx.Button(panel, label="Streaming")
             hbox.Add(cb, 1, flag=wx.EXPAND | wx.ALL | wx.ALIGN_RIGHT,
                      border=0)
@@ -306,13 +314,13 @@ class UiAdvanced(wx.Frame):
 
         def fullareaBox(hide=True):
             hbox = wx.BoxSizer(wx.HORIZONTAL)
-            self.rb1 = rb1 = wx.RadioButton(panel, -1, 'Fullscreen', style=wx.RB_GROUP)
-            hbox.Add(rb1,
-                     flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=5)
-            self.rb2 = rb2 = wx.RadioButton(panel, -1, 'Area')
-            hbox.Add(rb2,
-                     flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=5)
+            rb1 = wx.RadioButton(panel, -1, 'Fullscreen', style=wx.RB_GROUP)
+            hbox.Add(rb1, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=5)
+            rb2 = wx.RadioButton(panel, -1, 'Area')
+            hbox.Add(rb2, 1, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=5)
 
+            self._input_rb_fullscreen = rb1
+            self._input_rb_area = rb2
             self.Bind(wx.EVT_RADIOBUTTON, self.OnClickFullArea, id=rb1.GetId())
             self.Bind(wx.EVT_RADIOBUTTON, self.OnClickFullArea, id=rb2.GetId())
 
@@ -323,7 +331,8 @@ class UiAdvanced(wx.Frame):
         vboxL = wx.BoxSizer(wx.VERTICAL)
         vboxR = wx.BoxSizer(wx.VERTICAL)
 
-        png = wx.Image('icon_64x64_2.png', wx.BITMAP_TYPE_ANY).ConvertToBitmap()
+        png = wx.Image(CrossPlatform.get().share_path('desktop-mirror-64.png'),
+                       wx.BITMAP_TYPE_ANY).ConvertToBitmap()
         image = wx.StaticBitmap(panel, -1, png, (0, 0),
                                 (png.GetWidth(), png.GetHeight()))
         vboxL.Add(image)
@@ -603,7 +612,7 @@ class UiAdvanced(wx.Frame):
 
     def OnClickFullArea(self, evt):
         logging.debug('Event: {}'.format(evt.GetId()))
-        if evt.GetId() == self.rb1.GetId():
+        if evt.GetId() == self._input_rb_fullscreen.GetId():
             self.OnClickFullScreen(evt)
         else:
             self.OnClickSelectionArea(evt)
@@ -777,7 +786,7 @@ class CoreEventHandler(object):
         logging.error('event not process: ' + obj_id)
 
 
-class SelectionArea(Thread):
+class SelectionAreaExternalProgram(Thread):
     def __init__(self, callback):
         Thread.__init__(self)
         self._callback = callback
@@ -791,6 +800,21 @@ class SelectionArea(Thread):
         cmd = Command(execution + ' "%x %y %w %h"', True, True).run()
         line = cmd.stdout.split()
         self._callback(line[0:4])
+
+
+class SelectionArea(object):
+    def __init__(self, callback):
+        #Thread.__init__(self)
+        self._callback = callback
+
+    def run(self):
+        frame = FrmAreaChooser(None, -1, 'Live Area', self._callback)
+        frame.Show(True)
+        frame.SetTransparent(100)
+        frame.Center()
+
+    def start(self):
+        self.run()
 
 
 class MyArgumentParser(object):
@@ -854,7 +878,7 @@ def main():
     core = Core(args, extra_args)
     try:
         core.start()
-        UiAdvanced(None, title="Desktop Mirror - Advanced", core=core)
+        UiAdvanced(None, title="Desktop Mirror", core=core)
         app.MainLoop()
     except KeyboardInterrupt:
         logging.info('^c')
