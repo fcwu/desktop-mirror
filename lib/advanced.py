@@ -44,6 +44,11 @@ class UiAdvanced(wx.Frame):
         self.Bind(EVT_SOME_NEW_EVENT, self.handler)
         self.Bind(wx.EVT_CLOSE, self.OnCloseWindow)
 
+        # ~/Downloads/png2ico/png2ico icon.ico
+        # desktop-mirror-64.png desktop-mirror-32.png desktop-mirror-16.png
+        self.SetIcon(wx.Icon(CrossPlatform.get().share_path('icon.ico'),
+                             wx.BITMAP_TYPE_ICO))
+
         self.InitUI()
         self.OnClickFullScreen(None)
         self.ConfigLoad()
