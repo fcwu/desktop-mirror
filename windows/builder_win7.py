@@ -48,6 +48,16 @@ Section "{program_name} (required)"
   ; Put file there
   File /r '${{py2exeOutputDirectory}}\*'
 
+  ; Screen Recorder
+  ; https://github.com/rdp/screen-capture-recorder-to-video-windows-free
+  ${If} ${RunningX64}
+    ExecWait "regsvr32 /s screen-capture-recorder-x64.dll"
+    ExecWait "regsvr32 /s audio_sniffer-x64.0.3.13.dll"
+  ${Else}
+    ExecWait "regsvr32 /s screen-capture-recorder.dll"
+    ExecWait "regsvr32 /s audio_sniffer.0.3.13.dll"
+  ${EndIf}
+
   ; Write the installation path into the registry
   WriteRegStr HKLM SOFTWARE\{program_name} "Install_Dir" "$INSTDIR"
 
@@ -186,7 +196,8 @@ changelog and logo are included in dist
 data_files = [("Microsoft.VC90.CRT",
                glob(r'C:\Program Files (x86)\Microsoft Visual Studio 9.0\VC\redist\x86\Microsoft.VC90.CRT\*.*')),
               ("share", ('share\\crtmpserver.lua', 'share\\default_win7.ini', 'share\\desktop-mirror-64.png', 'share\\icon.ico')),
-              ("", ('windows\\avconv.exe', 'windows\\crtmpserver.exe', 'windows\\ffplay.exe', 'windows\\BonjourPSSetup.exe')),
+              ("", glob(r'windows\*.exe')),
+              ("", glob(r'windows\*.dll')),
               ]
 includes = []
 excludes = ['_gtkagg', '_tkagg', 'bsddb', 'curses', 'email', 'pywin.debugger',
