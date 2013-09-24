@@ -213,7 +213,7 @@ setup(
     windows=[
         {
             "script": "lib/advanced.py",
-            "icon_resources": [(1, "icon.ico")]
+            "icon_resources": [(1, "share\\icon.ico")]
         }
     ],
     data_files=data_files,
