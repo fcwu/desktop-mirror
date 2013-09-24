@@ -6,6 +6,7 @@ from threading import Thread
 import logging
 import shlex
 from subprocess import Popen, PIPE, STDOUT
+import subprocess as sb
 #from select import select
 from crossplatform import CrossPlatform
 from common import DEFAULT_PORT
@@ -31,7 +32,14 @@ class Process(object):
     def run(self, args):
         cmdline = self.prepare(args)
         logging.info(self._name + ' start: ' + ' '.join(cmdline))
-        p = Popen(cmdline, stdout=PIPE, stderr=STDOUT)
+        if CrossPlatform.get().is_linux():
+            p = Popen(cmdline, stdout=PIPE, stderr=STDOUT)
+        else:
+            startupinfo = sb.STARTUPINFO()
+            startupinfo.dwFlags |= sb.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0
+            p = Popen(cmdline, stdout=PIPE, stderr=STDOUT,
+                      startupinfo=startupinfo)
         self.p = p
         return self
 
@@ -131,8 +139,11 @@ class ServerProcess(Process):
         super(ServerProcess, self).__init__(server, 'server')
 
     def prepare(self, args):
-        params = (CrossPlatform.get().share_path('crtmpserver.lua'))
-        return ['crtmpserver'] + shlex.split(params)
+        # http://osdir.com/ml/python.py2exe/2006-01/msg00008.html
+        # shlex has path problem on Windows 7 x86_64
+        # such as share/crtmpserver.lua -> sharecrtmpserver.lua
+        params = [CrossPlatform.get().share_path('crtmpserver.lua'), ]
+        return ['crtmpserver'] + params
 
     def process(self, line):
         if not line.startswith(self.name):
