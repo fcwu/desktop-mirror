@@ -1,3 +1,9 @@
+desktop-mirror (0.5) unstable; urgency=low
+
+  * Update icon
+
+ -- Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>  Tue, 24 Sep 2013 23:23:49 +0800
+
 desktop-mirror (0.4) unstable; urgency=low
 
   * Bump to git version e4c23da

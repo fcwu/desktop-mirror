@@ -11,6 +11,7 @@ import logging
 from argparse import ArgumentParser, SUPPRESS
 from ConfigParser import ConfigParser
 from subprocess import Popen
+import subprocess as sb
 # CoreEventHandler
 import socket
 import urllib2
@@ -50,8 +51,8 @@ class UiAdvanced(wx.Frame):
                              wx.BITMAP_TYPE_ICO))
 
         self.InitUI()
-        self.OnClickFullScreen(None)
         self.ConfigLoad()
+        self.OnClickFullScreen(None)
         self.Centre()
         self.Show()
 
@@ -153,8 +154,15 @@ class UiAdvanced(wx.Frame):
                                APPNAME,
                                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_YES:
-            cmdline = ['ffplay', data[1]]
-            Popen(cmdline)
+            if CrossPlatform.get().is_linux():
+                cmdline = ['ffplay', data[1]]
+                Popen(cmdline)
+            else:
+                startupinfo = sb.STARTUPINFO()
+                startupinfo.dwFlags |= sb.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 0
+                cmdline = ['ffplay', data[1]]
+                Popen(cmdline, startupinfo=startupinfo)
 
     def handler(self, evt):
         logging.debug('UI event {0}: {1}'.format(evt.attr1, evt.attr2))
