@@ -10,6 +10,7 @@ import subprocess
 
 NSIS_SCRIPT_TEMPLATE = r"""
 !include "MUI2.nsh"
+!include "x64.nsh"
 
 !define py2exeOutputDirectory '{output_dir}\'
 !define exe '{program_name}.exe'
@@ -50,13 +51,15 @@ Section "{program_name} (required)"
 
   ; Screen Recorder
   ; https://github.com/rdp/screen-capture-recorder-to-video-windows-free
-  ${If} ${RunningX64}
+  ${{If}} ${{RunningX64}}
     ExecWait "regsvr32 /s screen-capture-recorder-x64.dll"
     ExecWait "regsvr32 /s audio_sniffer-x64.0.3.13.dll"
-  ${Else}
+    ExecWait "$INSTDIR\vcredist_x64.exe /passive /qb /i "
+  ${{Else}}
     ExecWait "regsvr32 /s screen-capture-recorder.dll"
     ExecWait "regsvr32 /s audio_sniffer.0.3.13.dll"
-  ${EndIf}
+    ExecWait "$INSTDIR\vcredist_x86.exe /passive /qb /i "
+  ${{EndIf}}
 
   ; Write the installation path into the registry
   WriteRegStr HKLM SOFTWARE\{program_name} "Install_Dir" "$INSTDIR"
@@ -101,7 +104,7 @@ SectionEnd
 
 class NSISScript(object):
 
-    NSIS_COMPILE = r'C:\Program Files (x86)\NSIS\makensis'
+    NSIS_COMPILE = r'C:\Program Files\NSIS\makensis'
 
     def __init__(self, program_name, program_desc, dist_dir, icon_loc):
         self.program_name = program_name
@@ -193,8 +196,7 @@ changelog and logo are included in dist
             "other_resources": [(24,1,manifest)]
     data_files=data_files,
 """
-data_files = [("Microsoft.VC90.CRT",
-               glob(r'C:\Program Files (x86)\Microsoft Visual Studio 9.0\VC\redist\x86\Microsoft.VC90.CRT\*.*')),
+data_files = [
               ("share", ('share\\crtmpserver.lua', 'share\\default_win7.ini', 'share\\desktop-mirror-64.png', 'share\\icon.ico')),
               ("", glob(r'windows\*.exe')),
               ("", glob(r'windows\*.dll')),
