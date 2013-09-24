@@ -52,13 +52,16 @@ Section "{program_name} (required)"
   ; Screen Recorder
   ; https://github.com/rdp/screen-capture-recorder-to-video-windows-free
   ${{If}} ${{RunningX64}}
-    ExecWait "regsvr32 /s screen-capture-recorder-x64.dll"
-    ExecWait "regsvr32 /s audio_sniffer-x64.0.3.13.dll"
-    ExecWait "$INSTDIR\vcredist_x64.exe /passive /qb /i "
-  ${{Else}}
+    ; ExecWait "regsvr32 /s screen-capture-recorder-x64.dll"
+    ; ExecWait "regsvr32 /s audio_sniffer-x64.0.3.13.dll"
+    ; ExecWait "$INSTDIR\vcredist_x64.exe /passive /qb /i "
+    ExecWait "$INSTDIR\vcredist_x86.exe /passive /qb /i "
     ExecWait "regsvr32 /s screen-capture-recorder.dll"
     ExecWait "regsvr32 /s audio_sniffer.0.3.13.dll"
+  ${{Else}}
     ExecWait "$INSTDIR\vcredist_x86.exe /passive /qb /i "
+    ExecWait "regsvr32 /s screen-capture-recorder.dll"
+    ExecWait "regsvr32 /s audio_sniffer.0.3.13.dll"
   ${{EndIf}}
 
   ; Write the installation path into the registry
