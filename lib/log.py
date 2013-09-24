@@ -4,6 +4,7 @@
 import sys
 import logging
 import logging.handlers
+from crossplatform import CrossPlatform
 
 
 #The terminal has 8 colors with codes from 0 to 7
@@ -61,6 +62,8 @@ class LoggingConfiguration(object):
             log_handler.setLevel(log_level)
             logger.addHandler(log_handler)
 
+        if CrossPlatform.get().is_windows():
+            log_filename = CrossPlatform.get().user_config_path('dm.log')
         # Log to rotating file using DEBUG log level
         log_handler = logging.handlers.RotatingFileHandler(log_filename,
                                                            mode='a+',
