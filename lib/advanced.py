@@ -57,9 +57,9 @@ class UiAdvanced(wx.Frame):
         self.Show()
 
     def ConfigLoad(self):
-        filepath = CrossPlatform.get().user_config_path('ui.ini')
-        if not os.path.exists(filepath):
-            filepath = CrossPlatform.get().system_config_path()
+        #filepath = CrossPlatform.get().user_config_path('ui.ini')
+        #if not os.path.exists(filepath):
+        filepath = CrossPlatform.get().system_config_path()
         logging.info('Loading config from ' + filepath)
         config = ConfigParser()
         config.read(filepath)
