@@ -114,7 +114,7 @@ class FfmpegTcpProcess(Process):
                   ' {audio_input}'
                   ' {video_output}'
                   ' {audio_output}'
-                  ' -f mpegts tcp://0.0.0.0:' + str(DEFAULT_PORT + 1) +
+                  ' -f flv tcp://0.0.0.0:' + str(DEFAULT_PORT + 1) +
                   '?listen'
                   ).format(video_input=args['video_input'],
                            video_output=args['video_output'],
