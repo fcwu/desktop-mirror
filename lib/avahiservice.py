@@ -12,6 +12,8 @@ from common import DEFAULT_PORT
 # local libraries
 import pybonjour as pb
 
+INCLUDE_SELF = False
+
 
 class AvahiService(Thread):
     TIMEOUT = 5
@@ -67,7 +69,7 @@ class AvahiService(Thread):
         if fullname not in self._targets:
             self._targets[fullname] = []
         host = hosttarget[:hosttarget.rfind('.local')]
-        if host != platform.node():
+        if INCLUDE_SELF or host != platform.node():
             service = fullname[fullname.find('.') + 1:-7]
             target = {'host': host, 'port': port, 'service': service}
             self._targets[fullname].append(target)
