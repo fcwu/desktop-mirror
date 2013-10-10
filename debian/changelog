@@ -1,3 +1,15 @@
+desktop-mirror (0.6) unstable; urgency=low
+
+  * 888d964 Fix error to close program if pressing close button in 5 seconds
+    after starting
+  * 9977627 Add version at window title
+  * 46b7b5e Implement network port offset every starting
+  * 69e8c8b Update README
+  * bb070a7 Discard user's setting because of risk about ffmpeg args if updated
+  * b399584 Add README
+
+ -- Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>  Thu, 10 Oct 2013 11:39:01 +0800
+
 desktop-mirror (0.5) unstable; urgency=low
 
   * Update icon

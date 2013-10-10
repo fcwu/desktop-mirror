@@ -12,6 +12,8 @@ from common import DEFAULT_PORT
 # local libraries
 import pybonjour as pb
 
+INCLUDE_SELF = False
+
 
 class AvahiService(Thread):
     TIMEOUT = 5
@@ -67,7 +69,7 @@ class AvahiService(Thread):
         if fullname not in self._targets:
             self._targets[fullname] = []
         host = hosttarget[:hosttarget.rfind('.local')]
-        if host != platform.node():
+        if INCLUDE_SELF or host != platform.node():
             service = fullname[fullname.find('.') + 1:-7]
             target = {'host': host, 'port': port, 'service': service}
             self._targets[fullname].append(target)
@@ -208,13 +210,13 @@ class AvahiService(Thread):
             self.remove_input()
 
     def stop(self):
-        self.remove_input()
         self._resolved.append(True)
         self._queried.append(True)
         self._stoped = True
         if hasattr(self, '_fire_timer') and self._fire_timer is not None:
             self._fire_timer.cancel()
-        self.join()
+        self.remove_input(True)
+        self.join(3)
 
     def fire_event(self):
         def callback():
@@ -227,9 +229,18 @@ class AvahiService(Thread):
         self._fire_timer = Timer(1.0, lambda: callback())
         self._fire_timer.start()
 
-    def remove_input(self):
-        self._lock.acquire()
-        for sd in self._input:
-            sd.close()
-        self._input = []
-        self._lock.release()
+    def remove_input(self, force=False):
+        if not force:
+            self._lock.acquire()
+        try:
+            for sd in self._input:
+                sd.close()
+            self._input = []
+        except:
+            import traceback
+            import sys
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+            logging.warn(''.join('!! ' + line for line in lines))
+        if not force:
+            self._lock.release()

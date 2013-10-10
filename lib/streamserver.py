@@ -106,15 +106,19 @@ class FfmpegCrtmpProcess(Process):
 
 
 class FfmpegTcpProcess(Process):
+    PORT_OFFSET = 0
+
     def __init__(self, server):
         super(FfmpegTcpProcess, self).__init__(server, 'ffmpeg')
 
     def prepare(self, args):
+        port = self.__class__.PORT_OFFSET + DEFAULT_PORT + 1
+        self.__class__.PORT_OFFSET += 1
         params = (args['video_input'] +
                   ' {audio_input}'
                   ' {video_output}'
                   ' {audio_output}'
-                  ' -f mpegts tcp://0.0.0.0:' + str(DEFAULT_PORT + 1) +
+                  ' -f mpegts tcp://0.0.0.0:' + str(port) +
                   '?listen'
                   ).format(video_input=args['video_input'],
                            video_output=args['video_output'],
@@ -124,7 +128,7 @@ class FfmpegTcpProcess(Process):
                            y=args['y'],
                            w=args['w'],
                            h=args['h'])
-        self._server._url = 'tcp://{ip}:' + str(DEFAULT_PORT + 1)
+        self._server._url = 'tcp://{ip}:' + str(port)
         return ['avconv'] + shlex.split(params)
 
     def process(self, line):
