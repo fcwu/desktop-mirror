@@ -896,9 +896,14 @@ def main():
         app.MainLoop()
     except KeyboardInterrupt:
         logging.info('^c')
+    except:
+        import traceback
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+        logging.warn(''.join('!! ' + line for line in lines))
     finally:
         core.stop()
-        core.join()
+        core.join(5)
 
 
 if __name__ == '__main__':
