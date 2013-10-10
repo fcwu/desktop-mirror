@@ -28,6 +28,7 @@ from avahiservice import AvahiService
 from streamserver import StreamServer
 from streamreceiver import StreamReceiver
 from areachooser import FrmAreaChooser
+from common import VERSION
 
 SomeNewEvent, EVT_SOME_NEW_EVENT = wx.lib.newevent.NewEvent()
 
@@ -891,7 +892,7 @@ def main():
     core = Core(args, extra_args)
     try:
         core.start()
-        UiAdvanced(None, title="Desktop Mirror", core=core)
+        UiAdvanced(None, title="Desktop Mirror - " + VERSION, core=core)
         app.MainLoop()
     except KeyboardInterrupt:
         logging.info('^c')
