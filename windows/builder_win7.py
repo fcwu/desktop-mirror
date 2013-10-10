@@ -83,6 +83,7 @@ Section "Start Menu Shortcuts"
   CreateDirectory "$SMPROGRAMS\{program_name}"
   CreateShortCut "$SMPROGRAMS\{program_name}\Uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\uninstall.exe" 0
   CreateShortCut "$SMPROGRAMS\{program_name}\{program_name}.lnk" "$INSTDIR\advanced.exe" "" "$INSTDIR\share\icon.ico"
+  CreateShortCut "$SMPROGRAMS\{program_name}\log.lnk" "$APPDATA\{program_name}"
 
 SectionEnd
 
