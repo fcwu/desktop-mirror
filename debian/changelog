@@ -1,3 +1,14 @@
+desktop-mirror (0.7) unstable; urgency=low
+
+  * 3460e55 Update 2dcd964 and windows error message after closed
+  * b0f998a Update permission of desktop-mirror.desktop
+  * 2dcd964 Fix error to stream from Linux to Windows
+  * c6a8f8b Add screenshots
+  * 63ac762 Add git pre-commit file to update version
+  * 1bdaebd Change encode of TCP mode streaming to flv for workaround of QNAP's XBMC
+
+ -- Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>  Sat, 12 Oct 2013 01:14:38 +0800
+
 desktop-mirror (0.6) unstable; urgency=low
 
   * 888d964 Fix error to close program if pressing close button in 5 seconds
