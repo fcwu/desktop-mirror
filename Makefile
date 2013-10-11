@@ -1,4 +1,4 @@
-SUBDIRS = lib
+SUBDIRS = 
 PWD = $(shell pwd)
 
 .PHONY: subdirs $(SUBDIRS)
