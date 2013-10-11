@@ -89,6 +89,7 @@ class FfmpegCrtmpProcess(Process):
                   ' {audio_input}'
                   ' {video_output}'
                   ' {audio_output}'
+                  ' -metadata streamName=dmirror'
                   ' -f flv tcp://127.0.0.1:' + str(DEFAULT_PORT + 1)
                   ).format(video_input=args['video_input'],
                            video_output=args['video_output'],
@@ -118,7 +119,7 @@ class FfmpegTcpProcess(Process):
                   ' {audio_input}'
                   ' {video_output}'
                   ' {audio_output}'
-                  ' -f flv tcp://0.0.0.0:' + str(port + 1) +
+                  ' -f flv tcp://0.0.0.0:' + str(port) +
                   '?listen'
                   ).format(video_input=args['video_input'],
                            video_output=args['video_output'],
@@ -189,6 +190,7 @@ class StreamServer(Thread):
             self._processes.append(FfmpegCrtmpProcess(self).run(self._args))
         else:
             self._processes.append(FfmpegTcpProcess(self).run(self._args))
+        #self._processes.append(FfmpegTcpProcess(self).run(self._args))
 
     def run(self):
         def enqueue_output(out, queue, prefix):
