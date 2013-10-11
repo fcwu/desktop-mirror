@@ -156,7 +156,7 @@ class UiAdvanced(wx.Frame):
                                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_YES:
             if CrossPlatform.get().is_linux():
-                cmdline = ['ffplay', data[1]]
+                cmdline = ['ffplay', data[1] + ' live=1']
                 Popen(cmdline)
             else:
                 startupinfo = sb.STARTUPINFO()
