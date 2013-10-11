@@ -3,4 +3,4 @@
 
 APPNAME = 'desktop-mirror'
 DEFAULT_PORT = 47767
-VERSION = '0.6-30-g3cea146'
+VERSION = 'v0.7-27-g60a84b6'
