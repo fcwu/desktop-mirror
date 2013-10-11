@@ -156,13 +156,13 @@ class UiAdvanced(wx.Frame):
                                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_YES:
             if CrossPlatform.get().is_linux():
-                cmdline = ['ffplay', data[1] + ' live=1']
+                cmdline = ['ffplay', data[1]]
                 Popen(cmdline)
             else:
                 startupinfo = sb.STARTUPINFO()
                 startupinfo.dwFlags |= sb.STARTF_USESHOWWINDOW
                 startupinfo.wShowWindow = 0
-                cmdline = ['ffplay', data[1]]
+                cmdline = ['ffplay', data[1] + ' live=1']
                 Popen(cmdline, startupinfo=startupinfo)
 
     def handler(self, evt):
@@ -888,6 +888,9 @@ def main():
     LoggingConfiguration.set(args.log_level, args.log_filename, args.append)
     logging.debug('Arguments: {0!r}'.format(args))
     logging.debug('Extra Arguments: {0!r}'.format(extra_args))
+
+    sys.stdout = open(CrossPlatform.get().user_config_path('stdout.log'), 'w')
+    sys.stderr = open(CrossPlatform.get().user_config_path('stderr.log'), 'w')
 
     core = Core(args, extra_args)
     try:
