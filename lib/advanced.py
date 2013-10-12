@@ -590,8 +590,12 @@ class UiAdvanced(wx.Frame):
             self._input_stream.Enable(False)
         else:
             port = DEFAULT_PORT + 1 if m.group(2) is None else m.group(2)
+            if port >= DEFAULT_PORT:
+                service = '_desktop-mirror._tcp'
+            else:
+                service = '_xbmc-web._tcp'
             self._target = {'ip': m.group(1), 'port': port,
-                            'service': '_desktop-mirror._tcp'}
+                            'service': service}
             self._input_stream.Enable(True)
         evt.Skip()
 
