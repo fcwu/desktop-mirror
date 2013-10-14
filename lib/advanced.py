@@ -714,7 +714,8 @@ class Core(Thread):
         if service == '_desktop-mirror._tcp':
             desktop_mirror()
         else:
-            xbmc()
+            #xbmc()
+            desktop_mirror()
 
     @property
     def targets(self):
