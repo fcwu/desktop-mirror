@@ -1,3 +1,9 @@
+desktop-mirror (0.8) unstable; urgency=low
+
+  * 6520d0f Fix connection error if no port provided 
+
+ -- Doro Wu <doro.wu@canonical.com>  Sun, 24 Nov 2013 20:18:57 +0800
+
 desktop-mirror (0.7) unstable; urgency=low
 
   * 3460e55 Update 2dcd964 and windows error message after closed
