@@ -261,5 +261,5 @@ class StreamServer(Thread):
         self._status = status
         try:
             self._callback(self._status)
-        except:
-            pass
+        except Exception as e:
+            logging.warn(e)
