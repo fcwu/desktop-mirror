@@ -127,22 +127,26 @@ class UiAdvanced(wx.Frame):
         #self.statusbar.SetStatusText(status_str[data])
         if StreamServer.S_STARTED != data:
             return
-        try:
-            self._core.playme(self._target['ip'],
-                              self._target['port'],
-                              self._target['service'])
-        except OSError:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)
-            logging.warn('{} {} {}'.format(exc_type,
-                                           fname[1],
-                                           exc_tb.tb_lineno))
+        ip = self._target['ip']
+        ports = (self._target['port'],)
+        service = self._target['service']
+        if service == 'auto':
+            ports = (8089, DEFAULT_PORT + 1)
+        for port in ports:
+            try:
+                self._core.playme(ip, port, service)
+                break
+            except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)
+                logging.warn('{} {} {}'.format(exc_type,
+                                               fname[1],
+                                               exc_tb.tb_lineno))
+        else:
             msg = ('Connection Error\n'
                    ' - IP: {}\n'
                    ' - Port: {}\n'
-                   ' - Service: {}').format(self._target['ip'],
-                                            self._target['port'],
-                                            self._target['service'])
+                   ' - Service: {}').format(ip, ports, service)
             wx.MessageBox(msg, APPNAME,
                           style=wx.OK | wx.CENTRE | wx.ICON_ERROR)
 
@@ -529,9 +533,16 @@ class UiAdvanced(wx.Frame):
             m = re.search('^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d{1,5})?$',
                           hostname)
             if target is None and m is not None:
-                port = DEFAULT_PORT + 1 if m.group(2) is None else m.group(2)
+                if m.group(2) is not None:
+                    port = m.group(2)[1:]
+                    service = '_xbmc-web._tcp'
+                    if int(port) >= int(DEFAULT_PORT):
+                        service = '_desktop-mirror._tcp'
+                else:
+                    port = DEFAULT_PORT + 1
+                    service = 'auto'
                 return {'ip': m.group(1), 'port': port,
-                        'service': 'desktop-mirror'}
+                        'service': service}
             for i in xrange(0, cb.GetCount()):
                 if hostname != cb.GetString(i):
                     continue
@@ -556,7 +567,6 @@ class UiAdvanced(wx.Frame):
                                  w=inp['w'].GetValue(),
                                  h=inp['h'].GetValue(),
                                  ip=self._target['ip'],
-                                 port=self._target['port'],
                                  service=self._target['service'])
         return True
 
@@ -583,21 +593,26 @@ class UiAdvanced(wx.Frame):
         self._target = None
         m = re.search('^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d{1,5})?$',
                       evt.GetString())
-        if m is None:
+        try:
+            if m.group(2) is not None:
+                port = m.group(2)[1:]
+                service = '_xbmc-web._tcp'
+                if int(port) >= int(DEFAULT_PORT):
+                    service = '_desktop-mirror._tcp'
+            else:
+                port = DEFAULT_PORT + 1
+                service = 'auto'
+            self._target = {'ip': m.group(1), 'port': port,
+                            'service': service}
+            self._input_stream.Enable(True)
+            evt.Skip()
+        except:
             ## Not available in 2.8
             # evt.GetEventObject().SetBackgroundColour(wx.Colour(255, 0, 0,
             #128));
             self._input_stream.Enable(False)
-        else:
-            port = DEFAULT_PORT + 1 if m.group(2) is None else m.group(2)[1:]
-            if int(port) >= int(DEFAULT_PORT):
-                service = '_desktop-mirror._tcp'
-            else:
-                service = '_xbmc-web._tcp'
-            self._target = {'ip': m.group(1), 'port': port,
-                            'service': service}
-            self._input_stream.Enable(True)
-        evt.Skip()
+            evt.skip()
+            return
 
     def OnTargetKeyEnter(self, evt):
         logging.info('OnTargetKeyEnter: %s' % evt.GetString())
@@ -687,10 +702,10 @@ class Core(Thread):
             url = 'http://{}:{}/xbmcCmds/xbmcHttp?command=PlayFile({})'.format(
                   remote_ip, remote_port, stream_url)
             req = urllib2.Request(url)
-            logging.debug('url = {}'.format(url))
-            response = urllib2.urlopen(req)
+            logging.info('url = {}'.format(url))
+            response = urllib2.urlopen(req, None, 5)
             result = response.read()
-            logging.debug('result: {}'.format(result))
+            logging.info('result: {}'.format(result))
 
         def desktop_mirror():
             stream_url = self._stream_server.url.format(ip=myip(remote_ip))
@@ -699,23 +714,23 @@ class Core(Thread):
                                       'params': {'item': {'file': stream_url}}}
                                       )
             url = 'http://{}:{}/jsonrpc'.format(remote_ip, remote_port)
-            logging.debug('url = {}'.format(url))
-            logging.debug('  json = {}'.format(data_as_json))
+            logging.info('url = {}'.format(url))
+            logging.info('  json = {}'.format(data_as_json))
             req = urllib2.Request(url, data_as_json,
                                   {'Content-Type': 'application/json'})
-            response = urllib2.urlopen(req)
+            response = urllib2.urlopen(req, None, 5)
             result = response.read()
-            #logging.debug('result: {}'.format(result))
+            logging.info('result: {}'.format(result))
             result = json.loads(result)
-            ##switch back to json with pretty format
+            #switch back to json with pretty format
             logging.debug(json.dumps(result, indent=4))
-        logging.info('Got streaming url: {}'.
-                     format(self._stream_server.url))
-        if service == '_desktop-mirror._tcp':
-            desktop_mirror()
-        else:
-            #xbmc()
-            desktop_mirror()
+        #logging.info('Got streaming url: {}'.
+        #             format(self._stream_server.url))
+        #if service == '_desktop-mirror._tcp':
+        #    desktop_mirror()
+        #else:
+        #    xbmc()
+        desktop_mirror()
 
     @property
     def targets(self):
