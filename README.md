@@ -18,7 +18,7 @@ Find video to show how it works
 Install
 ====
 
-[Download binary for Windows 7](https://www.dropbox.com/s/im3m23kg4sdtsrb/desktop-mirror.exe)
+[Download binary for Windows 7](https://dl.dropboxusercontent.com/u/23905041/qnap/desktop-mirror.exe)
 
 For ubuntu,
 
