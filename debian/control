@@ -4,8 +4,7 @@ Vcs-Git: git://github.com/fcwu/desktop-mirror
 Vcs-Browser: https://github.com/fcwu/desktop-mirror
 Priority: extra
 Build-Depends: debhelper (>= 6),
- python,
- libx11-dev
+ python
 Maintainer: Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>
 Standards-Version: 3.9.3
 
@@ -16,7 +15,7 @@ Depends: python (<< 3.0), python (>= 2.6),
  ${shlibs:Depends},
  python-distutils-extra,
  libnotify-bin,
- ffmpeg (>= 6:0.8.7-1ubuntu1dm1),
+ libav-tools,
  python-wxgtk2.8,
  libx11-6,
  libavahi-compat-libdnssd1,

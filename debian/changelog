@@ -1,3 +1,9 @@
+desktop-mirror (0.8ubuntu1trusty1) trusty; urgency=medium
+
+  * Bump to trusty
+
+ -- Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>  Tue, 14 Oct 2014 10:11:38 +0800
+
 desktop-mirror (0.8) unstable; urgency=low
 
   * 6520d0f Fix connection error if no port provided 
