@@ -28,6 +28,16 @@ $ sudo apt-get update
 $ sudo apt-get install desktop-mirror
 ```
 
+Build Windows Execution
+====
+
+Install Windows 7 32-bits,
+
+1. Install Microsoft Visual Studio Express 2012 for Windows Desktop
+2. Install Python 2.7.x and py2exe-0.6.9
+3. Install nsis
+4. ```git checkout -b win7 origin/win7```, then run ```build.bat```
+
 Troubleshooting
 ====
 
