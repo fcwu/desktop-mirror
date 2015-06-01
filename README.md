@@ -42,3 +42,8 @@ Troubleshooting
 2. More log messages
 
     Run the application in console and append parameters "--log-level debug"
+
+License
+====
+
+desktop-mirror is under the Apache 2.0 license. See the LICENSE file for details.
