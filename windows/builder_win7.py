@@ -109,7 +109,7 @@ SectionEnd
 
 class NSISScript(object):
 
-    NSIS_COMPILE = r'C:\Program Files\NSIS\makensis'
+    NSIS_COMPILE = r'C:\Program Files (x86)\NSIS\makensis'
 
     def __init__(self, program_name, program_desc, dist_dir, icon_loc):
         self.program_name = program_name
