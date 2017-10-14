@@ -155,6 +155,9 @@ class ServerProcess(Process):
             return
         if hasattr(self, '_url'):
             return
+        if line.find('GO! GO! GO!') > 0:
+            self._server.status = self._server.S_STARTING_READY
+            return
         index = line.find('Stream INLFLV(1) with name')
         if index < 0:
             return
@@ -172,6 +175,7 @@ class StreamServer(Thread):
     S_STARTING = 1
     S_STARTED = 2
     S_STOPPING = 3
+    S_STARTING_READY = 4
 
     def __init__(self, args, callback):
         Thread.__init__(self)
@@ -187,7 +191,6 @@ class StreamServer(Thread):
     def _start_processes(self):
         if self._args['service'] == '_desktop-mirror._tcp':
             self._processes.append(ServerProcess(self).run(self._args))
-            self._processes.append(FfmpegCrtmpProcess(self).run(self._args))
         else:
             self._processes.append(FfmpegTcpProcess(self).run(self._args))
         #self._processes.append(FfmpegTcpProcess(self).run(self._args))
@@ -230,6 +233,12 @@ class StreamServer(Thread):
             for p in self._processes:
                 if p.is_dead():
                     logging.info('{} is dead'.format(p.name))
+                    '''
+                    if isinstance(p, FfmpegCrtmpProcess):
+                        logging.info('Restart {}'.format(p.name))
+                        p.run(self._args)
+                        continue
+                    '''
                     is_dead = True
 
         self.stop()
@@ -259,6 +268,9 @@ class StreamServer(Thread):
         if self._status == status:
             return
         self._status = status
+        if self._args['service'] == '_desktop-mirror._tcp' and \
+                status == self.S_STARTING_READY:
+            self._processes.append(FfmpegCrtmpProcess(self).run(self._args))
         try:
             self._callback(self._status)
         except Exception as e:

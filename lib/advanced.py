@@ -137,11 +137,7 @@ class UiAdvanced(wx.Frame):
                 self._core.playme(ip, port, service)
                 break
             except Exception as e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)
-                logging.warn('{} {} {}'.format(exc_type,
-                                               fname[1],
-                                               exc_tb.tb_lineno))
+                logging.exception(e)
         else:
             msg = ('Connection Error\n'
                    ' - IP: {}\n'
@@ -543,7 +539,7 @@ class UiAdvanced(wx.Frame):
                     service = 'auto'
                 return {'ip': m.group(1), 'port': port,
                         'service': service}
-            for i in xrange(0, cb.GetCount()):
+            for i in range(0, cb.GetCount()):
                 if hostname != cb.GetString(i):
                     continue
                 data = cb.GetClientData(i)
@@ -709,10 +705,11 @@ class Core(Thread):
 
         def desktop_mirror():
             stream_url = self._stream_server.url.format(ip=myip(remote_ip))
-            data_as_json = json.dumps({'method': 'Player.Open',
-                                      'id': 1, 'jsonrpc': '2.0',
-                                      'params': {'item': {'file': stream_url}}}
-                                      )
+            data_as_json = json.dumps({
+                'method': 'Player.Open',
+                'id': 1, 'jsonrpc': '2.0',
+                'params': {'item': {'file': stream_url}}}
+            )
             url = 'http://{}:{}/jsonrpc'.format(remote_ip, remote_port)
             logging.info('url = {}'.format(url))
             logging.info('  json = {}'.format(data_as_json))
