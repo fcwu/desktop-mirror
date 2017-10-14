@@ -1,3 +1,9 @@
+desktop-mirror (0.8.1) UNRELEASED; urgency=medium
+
+  * Bump to xenial
+
+ -- Fan-Cheng Wu (Doro Wu) <fcwu.tw@gmail.com>  Sun, 15 Oct 2017 01:23:08 +0800
+
 desktop-mirror (0.8ubuntu1trusty1) trusty; urgency=medium
 
   * Bump to trusty
